@@ -36,7 +36,7 @@ let cachedKey = '';
 
 const SUPABASE_URL = 'https://uqtirisxgqmhxupncink.supabase.co';
 
-function getSupabase() {
+export function getSupabase() {
   const key = envVal('SUPABASE_SERVICE_ROLE_KEY') || envVal('SUPABASE_ANON_KEY') || '';
   if (!supabase || key !== cachedKey) {
     if (!key) {
@@ -63,7 +63,14 @@ export const db = {
   select: async <T = any>(table: string, filter?: { key: string; value: any }): Promise<T[]> => {
     const supabase = getSupabase();
     let req = supabase.from(table).select('*');
-    if (filter) req = req.eq(filter.key, filter.value);
+    if (filter) {
+      // Support batched "in" lookups: { key: 'user_id', value: [1, 2, 3] }
+      if (Array.isArray(filter.value) && filter.value.length) {
+        req = req.in(filter.key, filter.value);
+      } else {
+        req = req.eq(filter.key, filter.value);
+      }
+    }
     const result = await req;
     if (result.error) {
       if (result.error.code === 'PGRST116') return [] as T[]; // no rows found
@@ -158,6 +165,11 @@ export const db = {
     return String(total);
   },
 
+  /** Delete an app_settings row by key (used for receipt cleanup after review) */
+  deleteSetting: async (key: string): Promise<void> => {
+    const supabase = getSupabase();
+    await supabase.from('app_settings').delete().eq('key', key);
+  },
   /** Upsert an app_settings row */
   upsertSetting: async (key: string, value: string): Promise<void> => {
     const supabase = getSupabase();
@@ -263,7 +275,6 @@ export function query(table: string) {
 }
 
 export { supabase as defaultSupabase };
-export { getSupabase };
 
 /**
  * Convert snake_case DB rows to camelCase expected by the frontend.
