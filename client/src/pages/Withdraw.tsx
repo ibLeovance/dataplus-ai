@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,22 +18,20 @@ import AppLayout from "@/components/AppLayout";
 import {
   Wallet,
   Coins,
-  Copy,
   ArrowLeft,
   TrendingUp,
   Clock,
   CheckCircle2,
   XCircle,
   AlertTriangle,
+  Lock,
+  Percent,
 } from "lucide-react";
-
 const DEFAULT_MIN_WITHDRAWAL = 5;
-const ADMIN_WALLET_TRX = "TKF8qKRjB7XGmwL5fRse1bbgxElWWZisHy4";
-const ADMIN_WALLET_BTC = "bc1qae7mq6hmzf7xnq360emehgcthmpyjq0jtj3fct";
-const ADMIN_WALLET_USDT = "0x5ECb8F07bb486c1d630e393849e7d5D4aD2608b8";
-
+const FEE_PCT = 5;
 const statusConfig: Record<string, { color: string; icon: any; label: string }> = {
   pending: { color: "border-warning/30 text-warning", icon: Clock, label: "Pending" },
+  processing: { color: "border-primary/30 text-primary", icon: Clock, label: "Processing" },
   approved: { color: "border-chart-2/30 text-chart-2", icon: CheckCircle2, label: "Approved" },
   paid: { color: "border-success/30 text-success", icon: CheckCircle2, label: "Paid" },
   rejected: { color: "border-destructive/30 text-destructive", icon: XCircle, label: "Rejected" },
@@ -46,10 +43,12 @@ export default function Withdraw() {
   const [amount, setAmount] = useState("");
   const [walletAddress, setWalletAddress] = useState("");
   const [walletType, setWalletType] = useState<string>("USDT");
+  const [withdrawPin, setWithdrawPin] = useState("");
   const [overview, setOverview] = useState<any>(null);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [wdLoading, setWdLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [pinFetched, setPinFetched] = useState(false);
   const [minWithdrawal] = useState(DEFAULT_MIN_WITHDRAWAL);
 
   useEffect(() => {
@@ -60,34 +59,34 @@ export default function Withdraw() {
 
   useEffect(() => {
     if (user) {
-      // Fetch overview
       fetch("/api/auth/overview", { headers: { Authorization: `Bearer ${token}` } })
         .then(res => res.json())
         .then(data => setOverview(data.overview))
         .catch(() => {});
-
-      // Fetch withdrawals
-      fetch("/api/tasks/my-completions", { headers: { Authorization: `Bearer ${token}` } })
+      fetch("/api/auth/my-pin", { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => (r.ok ? r.json() : Promise.resolve({ pin: "" })))
+        .then(d => { setWithdrawPin(d.pin || ""); setPinFetched(true); })
+        .catch(() => setPinFetched(true));
+      fetch("/api/withdrawals/my", { headers: { Authorization: `Bearer ${token}` } })
         .then(res => res.json())
-        .then(data => {
-          // Actually fetch withdrawals from a dedicated endpoint
-          fetch("/api/withdrawals", { headers: { Authorization: `Bearer ${token}` } })
-            .then(res => res.json())
-            .then(wd => { setWithdrawals(wd.withdrawals || []); setWdLoading(false); })
-            .catch(() => setWdLoading(false));
-        })
+        .then(wd => { setWithdrawals(wd.withdrawals || []); setWdLoading(false); })
         .catch(() => setWdLoading(false));
     }
   }, [user, token]);
 
+  const amt = parseFloat(amount) || 0;
+  const fee = amt * (FEE_PCT / 100);
+  const netAmount = amt - fee;
+  const balance = Number(overview?.availableBalance || 0);
+  const canWithdraw = balance >= minWithdrawal;
+
   const handleSubmit = async () => {
-    const amt = parseFloat(amount);
-    if (isNaN(amt) || amt < minWithdrawal) {
+    const amtNum = parseFloat(amount);
+    if (isNaN(amtNum) || amtNum < minWithdrawal) {
       toast.error(`Minimum withdrawal is $${minWithdrawal}`);
       return;
     }
-    const balance = Number(overview?.availableBalance || 0);
-    if (amt > balance) {
+    if (amtNum > balance) {
       toast.error("Insufficient balance");
       return;
     }
@@ -95,31 +94,36 @@ export default function Withdraw() {
       toast.error("Please enter a valid wallet address");
       return;
     }
-
+    // Withdraw PIN requirement (set yours in Personal Center if not set yet)
+    const digits = withdrawPin.replace(/[^0-9]/g, "");
+    if (digits.length < 4 || digits.length > 6) {
+      toast.error("Please enter your 4-6 digit Withdraw PIN (set it in Personal Center first)");
+      return;
+    }
     setSubmitting(true);
     try {
-      const res = await fetch("/api/withdrawals", {
+      const res = await fetch("/api/withdrawals/withdraw", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          amount: amt,
+          amount: amtNum,
           walletAddress: walletAddress.trim(),
           currency: walletType,
+          pin: digits,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Withdrawal failed");
-      toast.success("Withdrawal request submitted! You'll be notified once processed.");
+      toast.success(`Withdrawal submitted! Fee ${FEE_PCT}% ($${fee.toFixed(4)}). Net payout: $${netAmount.toFixed(4)}. Funds arrive within 10 minutes.`);
       setAmount("");
-      // Refresh data
       fetch("/api/auth/overview", { headers: { Authorization: `Bearer ${token}` } })
         .then(res => res.json())
         .then(d => setOverview(d.overview))
         .catch(() => {});
-      fetch("/api/withdrawals", { headers: { Authorization: `Bearer ${token}` } })
+      fetch("/api/withdrawals/my", { headers: { Authorization: `Bearer ${token}` } })
         .then(res => res.json())
         .then(wd => setWithdrawals(wd.withdrawals || []))
         .catch(() => {});
@@ -137,9 +141,6 @@ export default function Withdraw() {
       </div>
     );
   }
-
-  const balance = Number(overview?.availableBalance || 0);
-  const canWithdraw = balance >= minWithdrawal;
 
   return (
     <AppLayout>
@@ -219,6 +220,44 @@ export default function Withdraw() {
               />
             </div>
 
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-primary" />
+                Withdraw PIN (required)
+              </Label>
+              <Input
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="Enter your 4-6 digit PIN"
+                value={withdrawPin}
+                onChange={(e) => setWithdrawPin(e.target.value.replace(/[^0-9]/g, ""))}
+                className="bg-secondary/50 border-border font-mono tracking-widest"
+              />
+              <p className="text-xs text-muted-foreground">
+                You must enter your Withdraw PIN before withdrawing. Set or change it in Personal Center.
+              </p>
+            </div>
+
+            {/* Fee summary */}
+            {amt > 0 && (
+              <div className="p-4 rounded-lg bg-secondary/50 border border-border">
+                <div className="flex items-center justify-between text-sm mb-1">
+                  <span className="text-muted-foreground flex items-center gap-1.5">
+                    <Percent className="w-3.5 h-3.5" /> Withdrawal fee ({FEE_PCT}%)
+                  </span>
+                  <span className="font-mono">-${fee.toFixed(4)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm font-semibold pt-1 border-t border-border/50">
+                  <span>You will receive</span>
+                  <span className="text-success font-mono">${netAmount.toFixed(4)}</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  Payouts are processed automatically and arrive in your wallet exchange account within 10 minutes.
+                </p>
+              </div>
+            )}
+
             <Button
               onClick={handleSubmit}
               disabled={submitting || !canWithdraw}
@@ -240,55 +279,6 @@ export default function Withdraw() {
                 </p>
               </div>
             )}
-
-            {/* Admin Payout Wallet Info */}
-            <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
-              <p className="text-sm font-medium text-primary mb-3">Scan QR or Copy — Payment Wallet Addresses:</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {/* TRX */}
-                <div className="flex flex-col items-center p-3 rounded-lg bg-background border border-border">
-                  <QRCodeSVG value={ADMIN_WALLET_TRX} size={100} level="M" includeMargin={true} />
-                  <p className="text-xs font-semibold mt-2 mb-1">TRX (Tron)</p>
-                  <p className="text-[10px] text-muted-foreground text-center break-all mb-2 font-mono">{ADMIN_WALLET_TRX}</p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-xs h-8"
-                    onClick={() => { navigator.clipboard.writeText(ADMIN_WALLET_TRX); toast.success("TRX address copied!"); }}
-                  >
-                    <Copy className="w-3.5 h-3.5 mr-1" /> Copy
-                  </Button>
-                </div>
-                {/* BTC */}
-                <div className="flex flex-col items-center p-3 rounded-lg bg-background border border-border">
-                  <QRCodeSVG value={ADMIN_WALLET_BTC} size={100} level="M" includeMargin={true} />
-                  <p className="text-xs font-semibold mt-2 mb-1">BTC (Bitcoin)</p>
-                  <p className="text-[10px] text-muted-foreground text-center break-all mb-2 font-mono">{ADMIN_WALLET_BTC}</p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-xs h-8"
-                    onClick={() => { navigator.clipboard.writeText(ADMIN_WALLET_BTC); toast.success("BTC address copied!"); }}
-                  >
-                    <Copy className="w-3.5 h-3.5 mr-1" /> Copy
-                  </Button>
-                </div>
-                {/* USDT */}
-                <div className="flex flex-col items-center p-3 rounded-lg bg-background border border-border">
-                  <QRCodeSVG value={ADMIN_WALLET_USDT} size={100} level="M" includeMargin={true} />
-                  <p className="text-xs font-semibold mt-2 mb-1">USDT (BSC)</p>
-                  <p className="text-[10px] text-muted-foreground text-center break-all mb-2 font-mono">{ADMIN_WALLET_USDT}</p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-xs h-8"
-                    onClick={() => { navigator.clipboard.writeText(ADMIN_WALLET_USDT); toast.success("USDT address copied!"); }}
-                  >
-                    <Copy className="w-3.5 h-3.5 mr-1" /> Copy
-                  </Button>
-                </div>
-              </div>
-            </div>
           </CardContent>
         </Card>
 
