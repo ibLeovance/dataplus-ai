@@ -1,7 +1,15 @@
 import { createClient, type PostgrestError } from '@supabase/supabase-js';
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://uqtirisxgqmhxupncink.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+function envVal(key: string): string | undefined {
+  // Works in Node (process.env) and in Workers runtime (bindings via process.env when
+  // nodejs_compat_populate_process_env, otherwise via globalThis.env).
+  if (typeof process !== 'undefined' && process.env && process.env[key]) return process.env[key];
+  if (typeof globalThis !== 'undefined' && (globalThis as any).env?.[key]) return (globalThis as any).env[key];
+  return undefined;
+}
+
+const SUPABASE_URL = envVal('SUPABASE_URL') || 'https://uqtirisxgqmhxupncink.supabase.co';
+const SUPABASE_KEY = envVal('SUPABASE_SERVICE_ROLE_KEY') || envVal('SUPABASE_ANON_KEY') || '';
 
 if (!SUPABASE_KEY) {
   console.warn('⚠️  SUPABASE_SERVICE_ROLE_KEY not set — database operations will fail');
