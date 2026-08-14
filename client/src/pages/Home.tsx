@@ -269,7 +269,7 @@ export default function Home() {
         {/* Content */}
         <main className="flex-1 p-4 lg:p-6">
           {/* Hero */}
-          <section className="mb-8">
+          <section className="mb-8 hero-glow">
             <div className="flex items-start gap-4 mb-6">
               <div>
                 <Badge className="mb-3 px-3 py-1 text-xs font-medium bg-primary/10 text-primary border-primary/20">
@@ -289,7 +289,7 @@ export default function Home() {
               <Button
                 size="lg"
                 onClick={() => window.location.href = "/login"}
-                className="h-11 px-6 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
+                className="h-11 px-6 btn-luxury"
               >
                 Start Earning Now
                 <ArrowRight className="w-4 h-4 ml-2" />
@@ -303,17 +303,17 @@ export default function Home() {
 
             {/* Quick stats */}
             <div className="grid grid-cols-3 gap-4 max-w-lg">
-              <div className="text-center p-3 rounded-lg bg-card border border-border">
+              <div className="text-center p-4 stat-luxury">
                 <Wallet className="w-6 h-6 text-primary mx-auto mb-1" />
                 <div className="text-xs font-semibold">BTC, USDT & TRX</div>
                 <div className="text-[10px] text-muted-foreground">Payout options</div>
               </div>
-              <div className="text-center p-3 rounded-lg bg-card border border-border">
+              <div className="text-center p-4 stat-luxury">
                 <ShieldCheck className="w-6 h-6 text-primary mx-auto mb-1" />
                 <div className="text-xs font-semibold">Verified Tasks</div>
                 <div className="text-[10px] text-muted-foreground">Admin-reviewed</div>
               </div>
-              <div className="text-center p-3 rounded-lg bg-card border border-border">
+              <div className="text-center p-4 stat-luxury">
                 <Users className="w-6 h-6 text-primary mx-auto mb-1" />
                 <div className="text-xs font-semibold">Referral Bonus</div>
                 <div className="text-[10px] text-muted-foreground">10% per referral</div>
@@ -353,8 +353,8 @@ export default function Home() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {taskTypes.map((task) => (
-                <Card key={task.title} className="hover:shadow-md transition-shadow border-border">
-                  <CardContent className="p-4">
+                <Card key={task.title} className="card-luxury border-transparent">
+                  <CardContent className="p-4 relative">
                     <div className="flex items-center justify-between mb-3">
                       <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
                         <task.icon className="w-5 h-5 text-primary" />

@@ -203,6 +203,19 @@ app.post('/api/auth/register', async (c) => {
       referral_code: refCode,
       referred_by: referredBy,
     });
+    // Send welcome notification to the new registrant (graceful if table absent)
+    try {
+      const welcomeTitle = await db.getSetting('welcome_title');
+      const welcomeBody = await db.getSetting('welcome_body');
+      await db.insertNotification({
+        user_id: newUser.id,
+        title: welcomeTitle || 'Welcome to AI COMPUTER PLUS!',
+        body: welcomeBody || 'You can now complete tasks to earn crypto. Invite friends with your link and earn 10% of what they earn!',
+        kind: 'welcome',
+      });
+    } catch {
+      /* no-op: notifications table may not exist yet */
+    }
     const env = getEnv();
     const token = jwt.sign(
       { id: newUser.id, username: newUser.username, role: newUser.role },
@@ -754,6 +767,106 @@ app.put('/api/admin/users/:id/role', async (c) => {
     const body = b(c);
     const { role } = body;
     await db.updateById('users', parseInt(c.req.param('id')), { role });
+    return c.json({ success: true });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+
+// ---------- Full admin edit: edit ANY field of a user ----------
+app.put('/api/admin/users/:id', async (c) => {
+  try {
+    if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
+    const id = parseInt(c.req.param('id'));
+    const body = b(c);
+    const set: Record<string, any> = {};
+    const allowed = ['username', 'email', 'role', 'btc_address', 'usdt_address', 'trx_address', 'available_balance', 'total_earned', 'referral_bonus'];
+    for (const key of allowed) {
+      const camelKey = key.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
+      const srcKey = body[key] !== undefined ? key : (body[camelKey] !== undefined ? camelKey : undefined);
+      if (srcKey !== undefined) set[key] = body[srcKey];
+    }
+    if (Object.keys(set).length === 0) return c.json({ error: 'No fields to update' }, 400);
+    await db.updateById('users', id, set);
+    return c.json({ success: true });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+
+app.delete('/api/admin/users/:id', async (c) => {
+  try {
+    if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
+    const userId = parseInt(c.req.param('id'));
+    await db.deleteById('withdrawals', 0).catch(() => undefined);
+    await db.deleteById('completions', 0).catch(() => undefined);
+    // Remove user's referrals' links and completions then the user
+    await db.update('completions', 'user_id', userId, { status: 'removed' }).catch(() => undefined);
+    await db.deleteById('users', userId);
+    return c.json({ success: true });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+
+// ---------- Notifications (admin) ----------
+app.get('/api/admin/notifications', async (c) => {
+  try {
+    if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
+    const rows = await db.listAllNotifications();
+    return c.json({ notifications: rows });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+
+app.post('/api/admin/notifications', async (c) => {
+  try {
+    if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
+    const body = b(c);
+    const { title, body: bodyText, kind } = body;
+    if (!title) return c.json({ error: 'Title required' }, 400);
+    const allUsers = await db.select('users');
+    const result = await db.insertNotification({
+      user_id: body.user_id != null ? body.user_id : null,
+      title,
+      body: bodyText || '',
+      kind: kind || (body.user_id != null ? 'info' : 'broadcast'),
+    });
+    if (!result.ok) return c.json({ success: false, note: 'notifications table missing' });
+    return c.json({ success: true });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+
+app.delete('/api/admin/notifications/:id', async (c) => {
+  try {
+    if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
+    await db.deleteNotification(parseInt(c.req.param('id')));
+    return c.json({ success: true });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+
+// ---------- Notifications (user) ----------
+app.get('/api/notifications', async (c) => {
+  try {
+    const userId = (c as any).user?.id;
+    if (!userId) return c.json({ error: 'Not authenticated' }, 401);
+    const rows = await db.listNotificationsForUser(userId);
+    return c.json({ notifications: rows });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+
+app.put('/api/notifications/:id/read', async (c) => {
+  try {
+    const userId = (c as any).user?.id;
+    if (!userId) return c.json({ error: 'Not authenticated' }, 401);
+    await db.markNotificationRead(parseInt(c.req.param('id')));
     return c.json({ success: true });
   } catch {
     return c.json({ error: 'Internal error' }, 500);

@@ -39,6 +39,10 @@ import {
   ArrowLeft,
   Shield,
   Settings as SettingsIcon,
+  Bell,
+  Send,
+  UserRoundPen,
+  MessageSquare,
 } from "lucide-react";
 
 export default function AdminPanel() {
@@ -143,6 +147,10 @@ function useApiMutation(
         },
         body: body ? JSON.stringify(body) : undefined,
       });
+      if (res.status === 404) {
+        if (onSuccessMsg) toast.warning("Database table not yet enabled — see admin guide.");
+        throw new Error("Feature not enabled yet");
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Request failed");
       if (onSuccessMsg) toast.success(onSuccessMsg);
@@ -193,6 +201,25 @@ function AdminContent() {
   const allUsers = usersData?.users || usersData || [];
 
   const updateRole = useApiMutation("PUT", "/api/admin/users/role/", "User role updated!");
+
+  // Notifications
+  const { data: notifsData, loading: notifsLoading, refresh: refreshNotifs } = useApiFetch("/api/admin/notifications");
+  const notifications = notifsData?.notifications || notifsData || [];
+  const deleteNotification = useApiMutation("DELETE", "/api/admin/notifications/", "Notification deleted!");
+
+  const handleDeleteNotification = async (id: number) => {
+    if (!confirm("Delete this notification?")) return;
+    try {
+      await fetch(`/api/admin/notifications/${id}`, {
+        method: "DELETE",
+        headers: authHeaders,
+      });
+      refreshNotifs();
+      toast.success("Notification deleted!");
+    } catch {}
+  };
+
+  const [editUser, setEditUser] = useState<any>(null);
 
   const handleApproveCompletion = async (id: number) => {
     try {
@@ -267,6 +294,20 @@ function AdminContent() {
     } catch {}
   };
 
+  const handleDeleteUser = async (userId: number) => {
+    if (!confirm("Permanently delete this user? This cannot be undone.")) return;
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, {
+        method: "DELETE",
+        headers: authHeaders,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      refreshUsers();
+      toast.success("User deleted!");
+    } catch {}
+  };
+
   return (
     <div className="pt-4 pb-8 px-2 lg:px-4">
       <h1 className="text-2xl font-sans font-bold mb-1">Admin Panel</h1>
@@ -311,6 +352,7 @@ function AdminContent() {
           <TabsTrigger value="completions" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Reviews</TabsTrigger>
           <TabsTrigger value="withdrawals" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Withdrawals</TabsTrigger>
           <TabsTrigger value="users" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Users</TabsTrigger>
+          <TabsTrigger value="notifications" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Notifications</TabsTrigger>
           <TabsTrigger value="settings" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Settings</TabsTrigger>
         </TabsList>
 
@@ -511,12 +553,18 @@ function AdminContent() {
                         <p className="text-xs text-muted-foreground">{u.email} — Role: {u.role}</p>
                         <p className="text-xs text-muted-foreground">Earned: ${Number(u.totalEarned || 0).toFixed(4)} | Balance: ${Number(u.availableBalance || 0).toFixed(4)}</p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
                         <Badge variant="outline" className={u.role === "admin" ? "border-primary/20 text-primary" : "border-muted/20 text-muted-foreground"}>
                           {u.role}
                         </Badge>
                         <Button size="sm" variant="outline" className="border-primary/20 text-primary" onClick={() => handleRoleChange(u.id, u.role)}>
                           {u.role === "admin" ? "Make User" : "Make Admin"}
+                        </Button>
+                        <Button size="sm" variant="outline" className="border-primary/20 text-primary" onClick={() => setEditUser(u)} title="Edit all fields">
+                          <UserRoundPen className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button size="sm" variant="outline" className="border-destructive/20 text-destructive" onClick={() => handleDeleteUser(u.id)} title="Delete user">
+                          <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </div>
                     </div>
@@ -532,6 +580,53 @@ function AdminContent() {
           </Card>
         </TabsContent>
 
+        {/* Notifications Tab */}
+        <TabsContent value="notifications">
+          <Card className="bg-card mb-4">
+            <CardHeader className="flex flex-row items-center justify-between py-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Bell className="w-5 h-5 text-primary" />
+                Notifications
+              </CardTitle>
+              <CreateNotificationDialog onCreated={refreshNotifs} />
+            </CardHeader>
+            <CardContent>
+              {notifsLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
+                </div>
+              ) : notifications.length > 0 ? (
+                <div className="space-y-2">
+                  {notifications.map((n: any) => (
+                    <div key={n.id} className="p-3 rounded-lg bg-secondary/20 border border-border/50">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className={`text-xs ${n.user_id ? "border-chart-2/20 text-chart-2" : "border-primary/20 text-primary"}`}>
+                            {n.user_id ? "single user" : "broadcast"}
+                          </Badge>
+                          <Badge variant="outline" className="text-xs border-muted/20 text-muted-foreground">{n.kind}</Badge>
+                          <span className="text-xs text-muted-foreground">{n.created_at ? new Date(n.created_at).toLocaleString() : ""}</span>
+                        </div>
+                        <Button size="sm" variant="outline" className="border-destructive/20 text-destructive" onClick={() => handleDeleteNotification(n.id)}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                      <p className="font-medium text-sm">{n.title}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{n.body}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Bell className="w-10 h-10 mx-auto mb-3 text-primary/20" />
+                  <p className="text-sm">No notifications sent yet.</p>
+                  <p className="text-xs mt-1">Send a broadcast to all users or a message to one user.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* Settings Tab */}
         <TabsContent value="settings">
           <AdminSettings />
@@ -540,6 +635,9 @@ function AdminContent() {
 
       {/* Edit Task Dialog */}
       {editTask && <EditTaskDialog task={editTask} onClose={() => { setEditTask(null); refreshTasks(); }} />}
+
+      {/* Edit User Dialog */}
+      {editUser && <EditUserDialog user={editUser} onClose={() => { setEditUser(null); refreshUsers(); }} />}
     </div>
   );
 }
@@ -826,6 +924,8 @@ function AdminSettings() {
   const [bnbWallet, setBnbWallet] = useState("");
   const [minWithdrawal, setMinWithdrawal] = useState("5.00");
   const [bonusPct, setBonusPct] = useState("10");
+  const [welcomeTitle, setWelcomeTitle] = useState("");
+  const [welcomeBody, setWelcomeBody] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -835,6 +935,8 @@ function AdminSettings() {
       setBnbWallet(settings.bnb_wallet || "");
       setMinWithdrawal(settings.min_withdrawal || "5.00");
       setBonusPct(settings.referral_bonus_pct || "10");
+      setWelcomeTitle(settings.welcome_title || "Welcome to AI COMPUTER PLUS!");
+      setWelcomeBody(settings.welcome_body || "You can now complete tasks to earn crypto. Invite friends with your link and earn 10% of what they earn!");
     }
   }, [settings]);
 
@@ -850,6 +952,8 @@ function AdminSettings() {
           bnbWallet: bnbWallet.trim(),
           minWithdrawal: minWithdrawal.trim(),
           referralBonusPct: bonusPct.trim(),
+          welcomeTitle: welcomeTitle.trim(),
+          welcomeBody: welcomeBody.trim(),
         }),
       });
       const data = await res.json();
@@ -906,6 +1010,20 @@ function AdminSettings() {
               <Input type="number" value={bonusPct} onChange={(e) => setBonusPct(e.target.value)} className="bg-secondary/50 border-border/50" />
             </div>
           </div>
+          <div className="pt-4 border-t border-border/50 space-y-4">
+            <p className="text-sm font-medium text-foreground flex items-center gap-2">
+              <Bell className="w-4 h-4 text-primary" />
+              Welcome Notification (sent automatically to every new registration)
+            </p>
+            <div className="space-y-2">
+              <Label>Welcome Title</Label>
+              <Input value={welcomeTitle} onChange={(e) => setWelcomeTitle(e.target.value)} className="bg-secondary/50 border-border/50" />
+            </div>
+            <div className="space-y-2">
+              <Label>Welcome Message</Label>
+              <Textarea value={welcomeBody} onChange={(e) => setWelcomeBody(e.target.value)} className="bg-secondary/50 border-border/50 min-h-[80px]" />
+            </div>
+          </div>
         </div>
         <Button onClick={handleSave} disabled={saving} className="bg-gradient-to-r bg-primary text-primary-foreground font-semibold hover:opacity-90">
           {saving ? (
@@ -915,5 +1033,213 @@ function AdminSettings() {
         </Button>
       </CardContent>
     </Card>
+  );
+}
+
+function EditUserDialog({ user: editUserRow, onClose }: { user: any; onClose: () => void }) {
+  const { token } = useAuth();
+  const [username, setUsername] = useState(editUserRow.username || "");
+  const [email, setEmail] = useState(editUserRow.email || "");
+  const [availableBalance, setAvailableBalance] = useState(String(Number(editUserRow.availableBalance ?? editUserRow.available_balance ?? 0)));
+  const [totalEarned, setTotalEarned] = useState(String(Number(editUserRow.totalEarned ?? editUserRow.total_earned ?? 0)));
+  const [btcAddress, setBtcAddress] = useState(editUserRow.btcAddress || editUserRow.btc_address || "");
+  const [usdtAddress, setUsdtAddress] = useState(editUserRow.usdtAddress || editUserRow.usdt_address || "");
+  const [trxAddress, setTrxAddress] = useState(editUserRow.trxAddress || editUserRow.trx_address || "");
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/admin/users/${editUserRow.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          username: username.trim(),
+          email: email.trim(),
+          available_balance: parseFloat(availableBalance) || 0,
+          total_earned: parseFloat(totalEarned) || 0,
+          btc_address: btcAddress.trim(),
+          usdt_address: usdtAddress.trim(),
+          trx_address: trxAddress.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update user");
+      toast.success("User updated!");
+      onClose();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="bg-card max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="font-sans text-xl flex items-center gap-2">
+            <UserRoundPen className="w-5 h-5 text-primary" />
+            Edit User
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 max-h-[65vh] overflow-y-auto">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Username</Label>
+              <Input value={username} onChange={(e) => setUsername(e.target.value)} className="bg-secondary/50 border-border/50" />
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input value={email} onChange={(e) => setEmail(e.target.value)} className="bg-secondary/50 border-border/50" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Available Balance (USD)</Label>
+              <Input type="number" step="0.0001" value={availableBalance} onChange={(e) => setAvailableBalance(e.target.value)} className="bg-secondary/50 border-border/50" />
+            </div>
+            <div className="space-y-2">
+              <Label>Total Earned (USD)</Label>
+              <Input type="number" step="0.0001" value={totalEarned} onChange={(e) => setTotalEarned(e.target.value)} className="bg-secondary/50 border-border/50" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>BTC Address</Label>
+            <Input value={btcAddress} onChange={(e) => setBtcAddress(e.target.value)} className="bg-secondary/50 border-border/50 font-mono text-xs" />
+          </div>
+          <div className="space-y-2">
+            <Label>USDT Address</Label>
+            <Input value={usdtAddress} onChange={(e) => setUsdtAddress(e.target.value)} className="bg-secondary/50 border-border/50 font-mono text-xs" />
+          </div>
+          <div className="space-y-2">
+            <Label>TRX Address</Label>
+            <Input value={trxAddress} onChange={(e) => setTrxAddress(e.target.value)} className="bg-secondary/50 border-border/50 font-mono text-xs" />
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={handleSave} disabled={saving} className="flex-1 bg-gradient-to-r bg-primary text-primary-foreground font-semibold hover:opacity-90">
+              {saving ? <div className="animate-spin w-5 h-5 border-2 border-current border-t-transparent rounded-full mr-2" /> : null}
+              Save Changes
+            </Button>
+            <Button onClick={onClose} variant="outline" className="border-border/50">Cancel</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CreateNotificationDialog({ onCreated }: { onCreated: () => void }) {
+  const { token } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [target, setTarget] = useState<"broadcast" | "user">("broadcast");
+  const [userId, setUserId] = useState("");
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [kind, setKind] = useState("broadcast");
+  const { data: usersData } = useApiFetch("/api/admin/users");
+  const allUsers = usersData?.users || usersData || [];
+
+  const handleSend = async () => {
+    if (!title.trim()) {
+      toast.error("Please enter a title");
+      return;
+    }
+    try {
+      const res = await fetch("/api/admin/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          title: title.trim(),
+          body: body.trim(),
+          kind: target === "broadcast" ? "broadcast" : "info",
+          user_id: target === "user" ? (parseInt(userId) || null) : null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || data.note || "Failed to send notification");
+      if (data.success === false) {
+        toast.warning("Notifications are not enabled yet — run the SQL from the admin guide in Supabase first.");
+        return;
+      }
+      toast.success(target === "broadcast" ? "Broadcast sent to all users!" : "Notification sent!");
+      setOpen(false);
+      setTitle("");
+      setBody("");
+      setUserId("");
+      onCreated();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" className="bg-gradient-to-r bg-primary text-primary-foreground font-semibold">
+          <Send className="w-4 h-4 mr-1" />
+          Send Notification
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="bg-card max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="font-sans text-xl">Send Notification</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+          <div className="space-y-2">
+            <Label>Who receives it?</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className={target === "broadcast" ? "border-primary text-primary bg-primary/5" : "border-border/50"}
+                onClick={() => setTarget("broadcast")}
+              >
+                <MessageSquare className="w-4 h-4 mr-1" />
+                All Users
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className={target === "user" ? "border-primary text-primary bg-primary/5" : "border-border/50"}
+                onClick={() => setTarget("user")}
+              >
+                <UserRoundPen className="w-4 h-4 mr-1" />
+                One User
+              </Button>
+            </div>
+          </div>
+          {target === "user" && (
+            <div className="space-y-2">
+              <Label>Select User</Label>
+              <Select value={userId} onValueChange={setUserId}>
+                <SelectTrigger className="bg-secondary/50 border-border/50">
+                  <SelectValue placeholder="Choose a user..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {allUsers.map((u: any) => (
+                    <SelectItem key={u.id} value={String(u.id)}>
+                      {u.username || u.email} ({u.email})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label>Title *</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., New task available!" className="bg-secondary/50 border-border/50" />
+          </div>
+          <div className="space-y-2">
+            <Label>Message</Label>
+            <Textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write the notification message..." className="bg-secondary/50 border-border/50 min-h-[80px]" />
+          </div>
+          <Button onClick={handleSend} className="w-full bg-gradient-to-r bg-primary text-primary-foreground font-semibold hover:opacity-90">
+            <Send className="w-4 h-4 mr-2" />
+            {target === "broadcast" ? "Broadcast to All Users" : "Send to User"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

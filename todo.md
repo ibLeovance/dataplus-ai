@@ -15,9 +15,27 @@
 - [ ] Verify live site on new domain; deliver admin instructions (login, add tasks, review withdrawals)
 
 ## New user requests (14 Aug, round 2)
-- [ ] Create new CF Pages project "ai-computer-xplus-ai-fresh"
-- [ ] Update wrangler.json (name, APP_DOMAIN, worker define URL) to ai-computer-xplus-ai-fresh.pages.dev, drop dataplus-ai references
-- [ ] Improve UI to 100% match echoeffect.top structure (columns/rows, banner, search, stat cards)
-- [ ] Ensure Recharge page has all 3 wallets (TRX, BTC, USDT) with QR scan + Copy buttons
-- [ ] Deploy to ai-computer-xplus-ai-fresh.pages.dev and verify live
-- [ ] Update is-a.dev PR #47183 CNAME to ai-computer-xplus-ai-fresh.pages.dev
+- [x] Create new CF Pages project "ai-computer-xplus-ai-fresh"
+- [x] Update wrangler.json (name, APP_DOMAIN, worker define URL) to ai-computer-xplus-ai-fresh.pages.dev, drop dataplus-ai references
+- [x] Improve UI to 100% match echoeffect.top structure (columns/rows, banner, search, stat cards)
+- [x] Ensure Recharge page has all 3 wallets (TRX, BTC, USDT) with QR scan + Copy buttons
+- [x] Deploy to ai-computer-xplus-ai-fresh.pages.dev and verify live
+- [x] Update is-a.dev PR #47183 CNAME to ai-computer-xplus-ai-fresh.pages.dev
+
+## Round 3 (14 Aug)
+- [x] Register user Bitcoinxml2000@proton.me with password Ibrahim2121 and promote role to admin in Supabase (id 14)
+- [x] Verify admin login works with the new account on live site (/admin-login -> /admin, all tabs visible)
+- [x] Verify Recharge page + all 3 wallets (QR + copy) responsive on mobile (flex-col sm:flex-row layout, full-width copy buttons, QR renders via SVG)
+- [x] Referral links per user verified earlier (verifyuser1 -> -LIFNDIG; admin -> -J6G0CER)
+- [x] No redeploy needed — mobile responsiveness confirmed in code (responsive CSS classes) and live pages rendered OK in browser
+
+## Round 4 (14 Aug) — Full admin edit + notifications + luxury UI
+- [ ] Backend: notifications table + endpoints (broadcast to all users, per-user send, mark read, unread count)
+- [ ] Backend: on-registration welcome notification (auto send to new user)
+- [ ] Backend: full edit APIs in admin panel — edit any user (username, email, role, balances), edit task (all fields incl. payout amount), edit completion/withdrawal records, edit all app_settings
+- [ ] Admin UI: inline edit everywhere — edit user modal, edit task modal, edit withdrawal status note, settings full edit
+- [ ] Admin UI: Notifications tab — compose broadcast, see sent list, per-user send
+- [ ] User side: notification bell with unread badge + notification list page/drawer
+- [ ] Luxury modern UI: glassmorphism cards, gradients, smooth animations, refined typography, polished stat cards, modern login/admin pages
+- [ ] Mobile check + redeploy to ai-computer-xplus-ai-fresh.pages.dev
+- [ ] Push to GitHub, deliver updated guide

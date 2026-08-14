@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
@@ -44,6 +44,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [location, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [notifs, setNotifs] = useState<any[]>([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const authRef = useRef({ user, token: "" });
 
   if (isLoading) {
     return (
@@ -67,6 +70,33 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     logout();
     navigate("/");
   };
+
+  const fetchNotifs = useCallback(async () => {
+    try {
+      const res = await fetch("/api/notifications");
+      if (res.ok) {
+        const json = await res.json();
+        setNotifs(json.notifications || json || []);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      fetchNotifs();
+      const t = setInterval(fetchNotifs, 60_000);
+      return () => clearInterval(t);
+    }
+  }, [user, fetchNotifs]);
+
+  const markRead = async (id: number) => {
+    try {
+      await fetch(`/api/notifications/${id}/read`, { method: "PUT" });
+      fetchNotifs();
+    } catch {}
+  };
+
+  const unreadCount = notifs.filter(n => !n.is_read).length;
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-sidebar border-r border-sidebar-border">
@@ -239,10 +269,55 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </div>
 
               {/* Notification bell */}
-              <button className="relative p-2 hover:bg-accent rounded-lg transition-colors">
-                <Bell className="w-4.5 h-4.5" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full" />
-              </button>
+              <div className="relative">
+                <button
+                  onClick={() => setNotifOpen(v => !v)}
+                  className="relative p-2 hover:bg-accent rounded-lg transition-colors"
+                >
+                  <Bell className="w-4.5 h-4.5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center text-[9px] font-bold text-primary-foreground bg-primary rounded-full">
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
+                </button>
+                {notifOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
+                    <div className="absolute right-0 top-full mt-2 w-80 max-h-[70vh] overflow-y-auto bg-card border border-border rounded-xl shadow-lg z-50">
+                      <div className="sticky top-0 px-4 py-3 border-b border-border bg-card flex items-center justify-between">
+                        <p className="text-sm font-semibold">Notifications</p>
+                        <button className="text-xs text-primary hover:underline" onClick={fetchNotifs}>Refresh</button>
+                      </div>
+                      {notifs.length === 0 ? (
+                        <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                          <Bell className="w-8 h-8 mx-auto mb-2 text-primary/20" />
+                          No notifications yet
+                        </div>
+                      ) : (
+                        notifs.map((n: any) => (
+                          <button
+                            key={n.id}
+                            onClick={() => markRead(n.id)}
+                            className={`w-full text-left px-4 py-3 border-b border-border/50 last:border-0 hover:bg-accent/50 transition-colors ${
+                              !n.is_read ? "bg-primary/[0.04]" : ""
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 mb-0.5">
+                              {!n.is_read && <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />}
+                              <p className="text-xs font-semibold line-clamp-1">{n.title}</p>
+                            </div>
+                            <p className="text-xs text-muted-foreground line-clamp-2">{n.body}</p>
+                            <p className="text-[10px] text-muted-foreground/70 mt-1">
+                              {n.created_at ? new Date(n.created_at).toLocaleString() : ""}
+                            </p>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
 
               {/* User */}
               <div className="flex items-center gap-2 pl-3 border-l border-border">
