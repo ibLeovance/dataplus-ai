@@ -4,5 +4,13 @@
   "pages_build_output_dir": "client/dist",
   "compatibility_flags": [
     "nodejs_compat"
+  ],
+  "external": [
+    "hono",
+    "hono/*",
+    "jsonwebtoken",
+    "bcryptjs",
+    "nanoid",
+    "@supabase/supabase-js"
   ]
 }

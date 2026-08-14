@@ -10,6 +10,7 @@ import Tasks from "./pages/Tasks";
 import TaskDetail from "./pages/TaskDetail";
 import Wallet from "./pages/Wallet";
 import Withdraw from "./pages/Withdraw";
+import Recharge from "./pages/Recharge";
 import Referral from "./pages/Referral";
 import AdminPanel from "./pages/AdminPanel";
 import AdminLogin from "./pages/AdminLogin";
@@ -25,6 +26,7 @@ function Router() {
       <Route path={"/tasks/:id"} component={TaskDetail} />
       <Route path={"/wallet"} component={Wallet} />
       <Route path={"/withdraw"} component={Withdraw} />
+      <Route path={"/recharge"} component={Recharge} />
       <Route path={"/referral"} component={Referral} />
       <Route path={"/admin-login"} component={AdminLogin} />
       <Route path={"/admin"} component={AdminPanel} />

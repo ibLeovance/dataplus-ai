@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import { serveStatic } from '@hono/node-server/serve-static';
 import { cors } from 'hono/cors';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
@@ -11,7 +10,6 @@ import { router as referralRouter } from './routers/referral';
 import { router as adminRouter } from './routers/admin';
 import { router as settingsRouter } from './routers/settings';
 import { router as shareRouter } from './routers/share';
-import { runStartupCheck } from './migrate';
 
 // Environment resolver: works both in Node (process.env) and in Cloudflare
 // Pages Functions runtime (bindings arrive on globalThis.env).
@@ -51,6 +49,14 @@ const app = new Hono();
 // ---------- Global middleware ----------
 app.use('*', cors());
 app.use('*', async (c, next) => {
+  // Bindings (ASSETS, env vars) arrive on c.env at request time in the
+  // Cloudflare Pages Functions runtime — keep them reachable globally.
+  try {
+    const reqEnv = (c as any).env;
+    if (reqEnv && typeof reqEnv === 'object') (globalThis as any).__cf_req_env = reqEnv;
+  } catch {
+    // ignore
+  }
   // Parse JSON body
   const req = c.req;
   const ct = req.header('content-type') || '';
@@ -93,9 +99,10 @@ app.use('/api/auth/*', async (c, next) => {
 // Authenticated-user middleware for everything else under /api
 function exempt(c: any, next: any) { (c as any).user = null; return next(); }
 app.use('/api/health', exempt);
+app.use('/api/_echo-env', exempt);
 app.use('/api/share/links', exempt);
 app.use('/api/withdrawals/admin-wallets', exempt);
-const PUBLIC_API_PATHS = ['/api/health', '/api/share/links', '/api/withdrawals/admin-wallets'];
+const PUBLIC_API_PATHS = ['/api/health', '/api/_echo-env', '/api/share/links', '/api/withdrawals/admin-wallets'];
 
 app.use('/api/*', async (c, next) => {
   // Public endpoints skip authentication; /api/auth/* paths are handled by the auth middleware above
@@ -145,6 +152,29 @@ function b(c: any): Record<string, any> {
 
 // ---------- Health ----------
 app.get('/api/health', (c) => c.json({ status: 'ok', env: getEnv().NODE_ENV || 'development' }));
+
+app.get('/api/_echo-env', async (c) => {
+  const keys = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'JWT_SECRET', 'APP_DOMAIN'];
+  const sources = ['reqEnv', 'globalThis.env', 'process.env'];
+  const report: Record<string, Record<string, boolean>> = {};
+  const reqEnv = (c as any).env;
+  const srcs: [string, any][] = [
+    ['reqEnv', reqEnv],
+    ['globalThis.env', (globalThis as any).env],
+    ['process.env', typeof process !== 'undefined' ? process.env : undefined],
+  ];
+  for (const [name, src] of srcs) {
+    report[name] = {};
+    for (const k of keys) {
+      try {
+        report[name][k] = src && typeof src[k] === 'string' && src[k].length > 0;
+      } catch {
+        report[name][k] = false;
+      }
+    }
+  }
+  return c.json({ report });
+});
 
 // ---------- Auth ----------
 app.post('/api/auth/register', async (c) => {
@@ -217,7 +247,8 @@ app.get('/api/auth/me', async (c) => {
     const rows = await db.select('users', { key: 'id', value: userId });
     const user = rows[0];
     if (!user) return c.json({ error: 'User not found' }, 404);
-    return c.json({ user: toCamel(user) });
+    const { password_hash: _ph, ...safeUser } = user as any;
+    return c.json({ user: toCamel(safeUser) });
   } catch (err) {
     return c.json({ error: 'Internal error' }, 500);
   }
@@ -291,7 +322,7 @@ app.get('/api/tasks/my-completions', async (c) => {
       completions.map(async (comp: any) => {
         const taskRows = await db.select('tasks', { key: 'id', value: comp.task_id });
         const t = taskRows[0];
-        return { ...comp, task_title: t?.title || null };
+        return { ...comp, task_title: t?.title || null, completed_at: comp.reviewed_at || comp.submitted_at };
       })
     );
     return c.json({ completions: toCamelList(withTitles) });
@@ -711,7 +742,7 @@ app.get('/api/admin/users', async (c) => {
   try {
     if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
     const allUsers = await db.select('users');
-    return c.json({ users: allUsers });
+    return c.json({ users: allUsers.map((u: any) => { const { password_hash: _ph, ...s } = u; return s; }) });
   } catch {
     return c.json({ error: 'Internal error' }, 500);
   }
@@ -730,59 +761,54 @@ app.put('/api/admin/users/:id/role', async (c) => {
 });
 
 // ---------- Static assets (SPA) ----------
-// In the Workers runtime, static assets are served by the Pages asset pipeline.
-// For local Node dev (wrangler pages dev / tsx), fall back to @hono/node-server serveStatic.
-// Workers runtime sets CF_PAGES (via wrangler/pages) or runs without process.versions.node
+// Static assets in Cloudflare Pages are served by the asset pipeline. In local
+// Node dev (wrangler pages dev), static files sit next to the worker and are
+// fetched through the asset pipeline via cacheOnly as well (same path).
 const isCloudflare = typeof globalThis !== 'undefined' && typeof (globalThis as any).WebSocketPair !== 'undefined';
-const isNodeRuntimeCheck = !isCloudflare && typeof process !== 'undefined' && !!process.env;
-if (isNodeRuntimeCheck) {
-  app.use('/assets/*', serveStatic({ root: './client/dist' }));
-  app.use('/*', serveStatic({ root: './client/dist' }));
-} else if (isCloudflare) {
-  // Cloudflare Pages: static assets live in the asset pipeline. The asset
-  // pipeline serves unmatched requests, but since our worker matches every
-  // route, we forward unmatched (and SPA) requests to the asset pipeline
-  // instead of answering 404.
-  const STATIC_EXTS = ['.js', '.css', '.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico', '.woff', '.woff2', '.ttf', '.json', '.txt', '.map'];
+{
+  const STATIC_EXTS = [".js", ".css", ".png", ".jpg", ".jpeg", ".webp", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".json", ".txt", ".map"];
   const isStatic = (pathname: string) => STATIC_EXTS.some((ext) => pathname.endsWith(ext));
-  app.get('/*', async (c) => {
+  const findAssets = (): { fetch?: (req: Request) => Promise<Response> } | undefined => {
+    const envs = [
+      (globalThis as any).__cf_req_env,
+      (globalThis as any).env,
+    ];
+    for (const e of envs) {
+      if (e && e.ASSETS && typeof e.ASSETS.fetch === 'function') return e.ASSETS;
+    }
+    return undefined;
+  };
+  app.get("/*", async (c) => {
     const pathname = new URL(c.req.url).pathname;
     // /api routes already handled above; anything else is a static/SPA request
-    if (isStatic(pathname)) {
-      // Cloudflare's documented pattern: fetch with { cf: { cacheOnly: true } }
-      // retrieves the asset from the Pages asset pipeline directly, without
-      // re-entering the worker (no infinite loop).
-      const res = await fetch(c.req.url, { cf: { cacheOnly: true } } as RequestInit);
-      return new Response(res.body, res);
+    let targetUrl = c.req.url;
+    if (!isStatic(pathname)) {
+      // SPA fallback: serve index.html for unknown non-api paths
+      targetUrl = new URL("/index.html", c.req.url).toString();
     }
-    // SPA fallback: serve index.html for unknown non-api paths
-    const res = await fetch(c.req.url.replace(/[^/]*$/, 'index.html'), { cf: { cacheOnly: true } } as RequestInit);
+    const assets = findAssets();
+    if (assets?.fetch) {
+      try {
+        const assetReq = new Request(targetUrl, { headers: c.req.headers });
+        const assetRes = await assets.fetch(assetReq);
+        if (assetRes.status === 404) {
+          // SPA fallback even for static paths missing in the pipeline
+          const idx = await assets.fetch(new Request(new URL("/index.html", c.req.url).toString(), { headers: c.req.headers }));
+          return idx;
+        }
+        return assetRes;
+      } catch (err) {
+        console.error("[static] ASSETS fetch failed:", (err as Error)?.message ?? err);
+        return new Response("static: " + ((err as Error)?.message ?? String(err)), { status: 500 });
+      }
+    }
+    // Dev/local fallback (wrangler pages dev): asset pipeline reachable via
+    // cacheOnly fetch on the same origin.
+    const res = await fetch(targetUrl, { cf: { cacheOnly: true } } as RequestInit);
     return new Response(res.body, res);
   });
 }
 
-// ---------- Node.js dev server (only in real Node, never in Workers runtime) ----------
-const isNodeRuntime =
-  typeof process !== 'undefined' &&
-  !!process.env &&
-  process.versions != null &&
-  !!process.versions.node;
-if (isNodeRuntime && !isCloudflare && process.env.NODE_ENV !== 'production-worker') {
-  const { serve } = await import('@hono/node-server');
-  const PORT = Number(process.env.PORT || 3000);
-  if (typeof process.env.SUPABASE_URL !== 'undefined') {
-    try {
-      await runStartupCheck();
-    } catch (err) {
-      console.error('❌ Startup schema check failed:', (err as Error).message);
-      process.exit(1);
-    }
-  }
-  serve({ fetch: app.fetch, port: PORT }, (info) => {
-    console.log(`🚀 Server running on http://localhost:${info.port}`);
-    console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
-  });
-}
 
 export { app };
 export default app;

@@ -5,6 +5,17 @@ function envVal(key: string): string | undefined {
   // In the Pages Functions runtime, env vars arrive as bindings on globalThis.env
   // (the request env object), while process.env may be undefined at early stages,
   // so we check globalThis.env first, then fall back to process.env.
+  // Request-time bindings (Cloudflare Pages direct-upload runtime passes the
+  // bindings object as the fetch handler's second argument; worker.ts captures
+  // it into globalThis.__cf_req_env at middleware time).
+  try {
+    const reqEnv = typeof globalThis !== 'undefined' ? (globalThis as any).__cf_req_env : undefined;
+    if (reqEnv && typeof reqEnv === 'object' && typeof reqEnv[key] === 'string' && reqEnv[key].length > 0) {
+      return reqEnv[key];
+    }
+  } catch {
+    // ignore
+  }
   try {
     if (typeof globalThis !== 'undefined' && (globalThis as any).env) {
       const v = (globalThis as any).env[key];

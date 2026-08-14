@@ -138,6 +138,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         )}
 
         <button
+          onClick={() => navigate("/recharge")}
+          className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors"
+        >
+          <Wallet className="w-4.5 h-4.5 flex-shrink-0" />
+          {!sidebarCollapsed && <span>Recharge</span>}
+        </button>
+
+        <button
           onClick={() => navigate("/withdraw")}
           className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors"
         >
