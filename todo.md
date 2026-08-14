@@ -74,15 +74,15 @@
 - [x] Rebuild + deploy + push to GitHub + update guide (marketplace-stats deploy bug: 'recharges' table missing in DB — removed; live verified totalUsers=11)
 
 ## Round 8 (14 Aug) — Performance & Security hardening
-- [ ] Security headers on worker responses (X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy)
-- [ ] Long-lived Cache-Control headers for immutable assets (/_worker.js, /assets/*) via _headers file or middleware
-- [ ] Rate limit on financial endpoints (withdraw/recharge requests)
-- [ ] Bundle audit: JS size check + no secret leakage in client bundle
-- [ ] Rebuild + redeploy + verify live + mobile check
-- [ ] Push to GitHub
+- [x] Security headers on worker responses (X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy)
+- [x] Long-lived Cache-Control headers for immutable assets (/_worker.js, /assets/*) via _headers file or middleware
+- [x] Rate limit on financial endpoints (withdraw/recharge requests)
+- [x] Bundle audit: JS size check + no secret leakage in client bundle
+- [x] Rebuild + redeploy + verify live + mobile check
+- [x] Push to GitHub
 
 ## Round 9 (14 Aug) — Reusable skill (ai-computer-plus-stack)
-- [ ] python init_skill.py ai-computer-plus-stack
-- [ ] Write SKILL.md: full workflow — Hono worker + Vite React, Supabase service-role backend, CF Pages direct upload WITH vars set on project, is-a.dev DNS PR, admin panel pattern, graceful notifications fallback, rate limiting patterns, Supabase dashboard browser DDL method
-- [ ] references: deployment.md (wrangler vars gotcha, deploy script), is-a-dev.md (DNS PR steps), supabase-ddl.md (browser SQL editor method)
-- [ ] quick_validate.py pass, deliver skill card to user
+- [x] python init_skill.py ai-computer-plus-stack
+- [x] Write SKILL.md: full workflow — Hono worker + Vite React, Supabase service-role backend, CF Pages direct upload WITH vars set on project, is-a.dev DNS PR, admin panel pattern, graceful notifications fallback, rate limiting patterns, Supabase dashboard browser DDL method
+- [x] references: deployment.md (wrangler vars gotcha, deploy script), is-a-dev.md (DNS PR steps), supabase-ddl.md (browser SQL editor method)
+- [x] quick_validate.py pass, deliver skill card to user
