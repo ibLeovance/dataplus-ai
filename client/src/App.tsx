@@ -12,6 +12,7 @@ import Wallet from "./pages/Wallet";
 import Withdraw from "./pages/Withdraw";
 import Referral from "./pages/Referral";
 import AdminPanel from "./pages/AdminPanel";
+import AdminLogin from "./pages/AdminLogin";
 import Login from "./pages/Login";
 
 function Router() {
@@ -25,6 +26,7 @@ function Router() {
       <Route path={"/wallet"} component={Wallet} />
       <Route path={"/withdraw"} component={Withdraw} />
       <Route path={"/referral"} component={Referral} />
+      <Route path={"/admin-login"} component={AdminLogin} />
       <Route path={"/admin"} component={AdminPanel} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />

@@ -47,7 +47,7 @@ export default function AdminPanel() {
 
   useEffect(() => {
     if (!isLoading && !user) {
-      navigate("/login");
+      navigate("/admin-login");
     }
   }, [user, isLoading, navigate]);
 
@@ -66,13 +66,21 @@ export default function AdminPanel() {
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
         <Shield className="w-16 h-16 text-destructive/20" />
         <h2 className="text-2xl font-sans font-bold">Access Denied</h2>
-        <p className="text-muted-foreground">You don't have admin privileges.</p>
-        <Button asChild variant="outline" className="border-primary/20 text-primary">
-          <Link href="/dashboard">
-            <ArrowLeft className="w-4 h-4 mr-1" />
-            Back to Dashboard
-          </Link>
-        </Button>
+        <p className="text-muted-foreground">You don't have admin privileges. Only the site owner can enter.</p>
+        <div className="flex gap-2 mt-2">
+          <Button asChild variant="outline" className="border-primary/20 text-primary">
+            <Link href="/admin-login">
+              <Shield className="w-4 h-4 mr-1" />
+              Admin Login
+            </Link>
+          </Button>
+          <Button asChild variant="ghost">
+            <Link href="/dashboard">
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Dashboard
+            </Link>
+          </Button>
+        </div>
       </div>
     );
   }
