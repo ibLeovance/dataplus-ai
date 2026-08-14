@@ -1,21 +1,39 @@
 import { createClient, type PostgrestError } from '@supabase/supabase-js';
 
 function envVal(key: string): string | undefined {
-  // Works in Node (process.env) and in Workers runtime (bindings via process.env when
-  // nodejs_compat_populate_process_env, otherwise via globalThis.env).
+  // Works in Node (process.env) and in Cloudflare Workers/Pages runtime.
+  // In Workers runtime, `process` exists via nodejs_compat but process.env may be empty,
+  // so fall back to globalThis.env (Workers bindings) when present.
   if (typeof process !== 'undefined' && process.env && process.env[key]) return process.env[key];
-  if (typeof globalThis !== 'undefined' && (globalThis as any).env?.[key]) return (globalThis as any).env[key];
+  try {
+    if (typeof globalThis !== 'undefined' && (globalThis as any).env && (globalThis as any).env[key]) {
+      return (globalThis as any).env[key];
+    }
+  } catch {
+    // globalThis.env access can throw in some runtimes
+  }
   return undefined;
 }
 
-const SUPABASE_URL = envVal('SUPABASE_URL') || 'https://uqtirisxgqmhxupncink.supabase.co';
-const SUPABASE_KEY = envVal('SUPABASE_SERVICE_ROLE_KEY') || envVal('SUPABASE_ANON_KEY') || '';
+// Lazy-initialized Supabase client: in Cloudflare Workers the env vars are only
+// available at request time (process.env is populated after module load), so we
+// resolve env values inside getSupabase() rather than once at module load.
+let supabase: import('@supabase/supabase-js').SupabaseClient | null = null;
+let cachedKey = '';
 
-if (!SUPABASE_KEY) {
-  console.warn('⚠️  SUPABASE_SERVICE_ROLE_KEY not set — database operations will fail');
+const SUPABASE_URL = 'https://uqtirisxgqmhxupncink.supabase.co';
+
+function getSupabase() {
+  const key = envVal('SUPABASE_SERVICE_ROLE_KEY') || envVal('SUPABASE_ANON_KEY') || '';
+  if (!supabase || key !== cachedKey) {
+    if (!key) {
+      console.warn('⚠️  SUPABASE_SERVICE_ROLE_KEY not set — database operations will fail');
+    }
+    supabase = createClient(SUPABASE_URL, key);
+    cachedKey = key;
+  }
+  return supabase;
 }
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 export type PostgrestResult<T> = { data: T | null; error: PostgrestError | null };
 
@@ -30,6 +48,7 @@ export type PostgrestResult<T> = { data: T | null; error: PostgrestError | null 
 export const db = {
   /** Generic select wrapper returning rows */
   select: async <T = any>(table: string, filter?: { key: string; value: any }): Promise<T[]> => {
+    const supabase = getSupabase();
     let req = supabase.from(table).select('*');
     if (filter) req = req.eq(filter.key, filter.value);
     const result = await req;
@@ -44,6 +63,7 @@ export const db = {
 
   /** Insert one row, returns the inserted row */
   insert: async <T = any>(table: string, values: Record<string, any>): Promise<T> => {
+    const supabase = getSupabase();
     const result = await supabase.from(table).insert(values).select().single<T>();
     if (result.error) {
       const err = new Error(`insert ${table}: ${result.error.message}`) as any;
@@ -55,6 +75,7 @@ export const db = {
 
   /** Update a single row by primary key, returns the updated row */
   updateById: async <T = any>(table: string, id: number, set: Record<string, any>): Promise<T | null> => {
+    const supabase = getSupabase();
     const result = await supabase
       .from(table)
       .update(set)
@@ -71,6 +92,7 @@ export const db = {
 
   /** Update rows matching a filter (key/value) */
   update: async (table: string, filterKey: string, filterValue: any, set: Record<string, any>): Promise<void> => {
+    const supabase = getSupabase();
     const result = await supabase.from(table).update(set).eq(filterKey, filterValue);
     if (result.error) {
       const err = new Error(`update ${table}: ${result.error.message}`) as any;
@@ -81,6 +103,7 @@ export const db = {
 
   /** Delete a row by primary key */
   deleteById: async (table: string, id: number): Promise<void> => {
+    const supabase = getSupabase();
     const result = await supabase.from(table).delete().eq('id', id);
     if (result.error) {
       const err = new Error(`delete ${table}: ${result.error.message}`) as any;
@@ -91,7 +114,8 @@ export const db = {
 
   /** Count rows, optionally filtered */
   count: async (table: string, filterKey?: string, filterValue?: any): Promise<number> => {
-    let req = supabase.from(table).select('*', { count: 'exact', head: true });
+    const supabase = getSupabase();
+    let req = supabase.from(table).select('*', { count: 'exact', head: true } as any);
     if (filterKey) req = req.eq(filterKey, filterValue as any);
     const result = await req;
     if (result.error) {
@@ -105,6 +129,7 @@ export const db = {
 
   /** Sum a numeric column over filtered rows, returns string */
   sum: async (table: string, column: string, filterKey?: string, filterValue?: any): Promise<string> => {
+    const supabase = getSupabase();
     let req = supabase.from(table).select(`${column}`);
     if (filterKey) req = req.eq(filterKey, filterValue as any);
     const result = await req;
@@ -122,6 +147,7 @@ export const db = {
 
   /** Upsert an app_settings row */
   upsertSetting: async (key: string, value: string): Promise<void> => {
+    const supabase = getSupabase();
     const result = await supabase
       .from('app_settings')
       .upsert({ key, value }, { onConflict: 'key' })
@@ -136,6 +162,7 @@ export const db = {
 
   /** Get a single app_settings value */
   getSetting: async (key: string): Promise<string> => {
+    const supabase = getSupabase();
     const result = await supabase
       .from('app_settings')
       .select('value')
@@ -148,10 +175,11 @@ export const db = {
 
 /** Raw PostgREST query builder for advanced cases (joins, raw sql via rpc) */
 export function query(table: string) {
-  return supabase.from(table);
+  return getSupabase().from(table);
 }
 
-export { supabase };
+export { supabase as defaultSupabase };
+export { getSupabase };
 
 /**
  * Convert snake_case DB rows to camelCase expected by the frontend.
