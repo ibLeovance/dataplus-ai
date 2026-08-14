@@ -725,6 +725,27 @@ const isNodeRuntimeCheck = !isCloudflare && typeof process !== 'undefined' && !!
 if (isNodeRuntimeCheck) {
   app.use('/assets/*', serveStatic({ root: './client/dist' }));
   app.use('/*', serveStatic({ root: './client/dist' }));
+} else if (isCloudflare) {
+  // Cloudflare Pages: static assets live in the asset pipeline. The asset
+  // pipeline serves unmatched requests, but since our worker matches every
+  // route, we forward unmatched (and SPA) requests to the asset pipeline
+  // instead of answering 404.
+  const STATIC_EXTS = ['.js', '.css', '.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico', '.woff', '.woff2', '.ttf', '.json', '.txt', '.map'];
+  const isStatic = (pathname: string) => STATIC_EXTS.some((ext) => pathname.endsWith(ext));
+  app.get('/*', async (c) => {
+    const pathname = new URL(c.req.url).pathname;
+    // /api routes already handled above; anything else is a static/SPA request
+    if (isStatic(pathname)) {
+      // Cloudflare's documented pattern: fetch with { cf: { cacheOnly: true } }
+      // retrieves the asset from the Pages asset pipeline directly, without
+      // re-entering the worker (no infinite loop).
+      const res = await fetch(c.req.url, { cf: { cacheOnly: true } } as RequestInit);
+      return new Response(res.body, res);
+    }
+    // SPA fallback: serve index.html for unknown non-api paths
+    const res = await fetch(c.req.url.replace(/[^/]*$/, 'index.html'), { cf: { cacheOnly: true } } as RequestInit);
+    return new Response(res.body, res);
+  });
 }
 
 // ---------- Node.js dev server (only in real Node, never in Workers runtime) ----------
