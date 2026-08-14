@@ -13,10 +13,23 @@ import { router as settingsRouter } from './routers/settings';
 import { router as shareRouter } from './routers/share';
 import { runStartupCheck } from './migrate';
 
-// Environment resolver: works both in Node (process.env) and in Workers runtime (bindings)
-export function getEnv() {
-  if (typeof process !== 'undefined' && process.env) return process.env;
-  return {} as NodeJS.ProcessEnv;
+// Environment resolver: works both in Node (process.env) and in Cloudflare
+// Pages Functions runtime (bindings arrive on globalThis.env).
+export function getEnv(): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {};
+  try {
+    if (typeof globalThis !== 'undefined' && (globalThis as any).env) {
+      for (const k of Object.keys((globalThis as any).env)) out[k] = String((globalThis as any).env[k]);
+    }
+  } catch {
+    // ignore
+  }
+  if (typeof process !== 'undefined' && process.env) {
+    for (const k of Object.keys(process.env)) {
+      if (out[k] === undefined) out[k] = process.env[k];
+    }
+  }
+  return out;
 }
 const JWT_SECRET_DEFAULT = 'dataplus-ai-secret';
 
