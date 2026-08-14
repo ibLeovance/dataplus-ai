@@ -18,6 +18,7 @@ import {
   Coins,
   Wallet,
   Headset,
+  Store,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -26,6 +27,7 @@ const navItems = [
   { icon: Compass, label: "Discover", path: "/tasks" },
   { icon: Users, label: "Team", path: "/referral" },
   { icon: UserCircle, label: "Personal Center", path: "/wallet" },
+  { icon: Store, label: "Marketplace", path: "/marketplace" },
   { icon: Award, label: "Milestone", path: "/dashboard" },
   { icon: TrendingUp, label: "Upline", path: "/dashboard" },
   { icon: PiggyBank, label: "Savings Jar", path: "/wallet" },

@@ -195,6 +195,24 @@ function AdminContent() {
   const withdrawals = wdsData?.withdrawals || wdsData || [];
 
   const updateWithdrawal = useApiMutation("PUT", "/api/admin/withdrawals/", undefined);
+  const handleUpdateWithdrawalWallet = async (id: number, walletAddress: string) => {
+    const w = withdrawals.find((x: any) => x.id === id);
+    try {
+      const res = await fetch(`/api/admin/withdrawals/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ status: w?.status || "pending", walletAddress }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update withdrawal");
+      }
+      refreshWds();
+      toast.success("Wallet address updated!");
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
 
   // Users
   const { data: usersData, loading: usersLoading, refresh: refreshUsers } = useApiFetch("/api/admin/users");
@@ -498,7 +516,14 @@ function AdminContent() {
                         <span className="text-sm font-bold text-primary">${Number(w.amount).toFixed(4)} {w.currency}</span>
                       </div>
                       <div className="text-xs text-muted-foreground mb-2">
-                        <p className="font-mono break-all">{w.walletAddress}</p>
+                        {w.fee !== undefined && w.fee > 0 && <p className="text-warning">Fee: ${(Number(w.fee)).toFixed(4)} (net: ${(Number(w.amount) - Number(w.fee)).toFixed(4)})</p>}
+                        <div className="flex items-start gap-1">
+                          <p className="font-mono break-all">{w.walletAddress}</p>
+                          <button className="shrink-0 text-primary hover:underline mt-0.5" onClick={() => {
+                            const addr = prompt("Edit withdrawal wallet address:", w.walletAddress);
+                            if (addr !== null && addr.trim()) handleUpdateWithdrawalWallet(w.id, addr.trim());
+                          }}>Edit</button>
+                        </div>
                         <p>{w.requestedAt ? new Date(w.requestedAt).toLocaleString() : ""}</p>
                         {w.txHash && <p className="mt-1 text-success font-mono break-all">TX: {w.txHash}</p>}
                       </div>
@@ -924,6 +949,7 @@ function AdminSettings() {
   const [bnbWallet, setBnbWallet] = useState("");
   const [minWithdrawal, setMinWithdrawal] = useState("5.00");
   const [bonusPct, setBonusPct] = useState("10");
+  const [feePct, setFeePct] = useState("0");
   const [welcomeTitle, setWelcomeTitle] = useState("");
   const [welcomeBody, setWelcomeBody] = useState("");
   const [saving, setSaving] = useState(false);
@@ -935,6 +961,7 @@ function AdminSettings() {
       setBnbWallet(settings.bnb_wallet || "");
       setMinWithdrawal(settings.min_withdrawal || "5.00");
       setBonusPct(settings.referral_bonus_pct || "10");
+      setFeePct(settings.withdrawal_fee_pct || "0");
       setWelcomeTitle(settings.welcome_title || "Welcome to AI COMPUTER PLUS!");
       setWelcomeBody(settings.welcome_body || "You can now complete tasks to earn crypto. Invite friends with your link and earn 10% of what they earn!");
     }
@@ -952,6 +979,7 @@ function AdminSettings() {
           bnbWallet: bnbWallet.trim(),
           minWithdrawal: minWithdrawal.trim(),
           referralBonusPct: bonusPct.trim(),
+          withdrawalFeePct: feePct.trim(),
           welcomeTitle: welcomeTitle.trim(),
           welcomeBody: welcomeBody.trim(),
         }),
@@ -1009,6 +1037,11 @@ function AdminSettings() {
               <Label>Referral Bonus (%)</Label>
               <Input type="number" value={bonusPct} onChange={(e) => setBonusPct(e.target.value)} className="bg-secondary/50 border-border/50" />
             </div>
+            <div className="space-y-2">
+              <Label>Withdrawal Fee (%)</Label>
+              <Input type="number" step="0.01" value={feePct} onChange={(e) => setFeePct(e.target.value)} className="bg-secondary/50 border-border/50" />
+              <p className="text-xs text-muted-foreground">Deducted from each withdrawal request (0 = no fee).</p>
+            </div>
           </div>
           <div className="pt-4 border-t border-border/50 space-y-4">
             <p className="text-sm font-medium text-foreground flex items-center gap-2">
@@ -1047,6 +1080,7 @@ function EditUserDialog({ user: editUserRow, onClose }: { user: any; onClose: ()
   const [trxAddress, setTrxAddress] = useState(editUserRow.trxAddress || editUserRow.trx_address || "");
   const [phoneNumber, setPhoneNumber] = useState(editUserRow.phoneNumber || editUserRow.phone_number || "");
   const [country, setCountry] = useState(editUserRow.country || "");
+  const [isBanned, setIsBanned] = useState(Boolean(editUserRow.isBanned ?? editUserRow.is_banned));
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -1065,6 +1099,7 @@ function EditUserDialog({ user: editUserRow, onClose }: { user: any; onClose: ()
           trx_address: trxAddress.trim(),
           phone_number: phoneNumber.trim(),
           country: country.trim(),
+          is_banned: isBanned,
         }),
       });
       const data = await res.json();
@@ -1127,6 +1162,21 @@ function EditUserDialog({ user: editUserRow, onClose }: { user: any; onClose: ()
           <div className="space-y-2">
             <Label>TRX Address</Label>
             <Input value={trxAddress} onChange={(e) => setTrxAddress(e.target.value)} className="bg-secondary/50 border-border/50 font-mono text-xs" />
+          </div>
+          <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border/50">
+            <div>
+              <p className="text-sm font-medium">Account Suspended</p>
+              <p className="text-xs text-muted-foreground">Banned users cannot log in until unbanned.</p>
+            </div>
+            <label className="inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isBanned}
+                onChange={(e) => setIsBanned(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 rounded-full peer bg-muted-foreground/30 peer-checked:bg-destructive/70 transition-colors relative after:content-[''] after:absolute after:top-0.5 after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-transform peer-checked:after:translate-x-5" />
+            </label>
           </div>
           <div className="flex gap-2">
             <Button onClick={handleSave} disabled={saving} className="flex-1 bg-gradient-to-r bg-primary text-primary-foreground font-semibold hover:opacity-90">

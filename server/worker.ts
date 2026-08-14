@@ -102,7 +102,8 @@ app.use('/api/health', exempt);
 app.use('/api/_echo-env', exempt);
 app.use('/api/share/links', exempt);
 app.use('/api/withdrawals/admin-wallets', exempt);
-const PUBLIC_API_PATHS = ['/api/health', '/api/_echo-env', '/api/share/links', '/api/withdrawals/admin-wallets'];
+app.use('/api/marketplace-stats', exempt);
+const PUBLIC_API_PATHS = ['/api/health', '/api/_echo-env', '/api/share/links', '/api/withdrawals/admin-wallets', '/api/marketplace-stats'];
 
 app.use('/api/*', async (c, next) => {
   // Public endpoints skip authentication; /api/auth/* paths are handled by the auth middleware above
@@ -298,6 +299,7 @@ app.post('/api/auth/login', async (c) => {
     if (!user) return c.json({ error: 'Invalid credentials' }, 401);
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return c.json({ error: 'Invalid credentials' }, 401);
+    if (user.is_banned) return c.json({ error: 'This account has been suspended. Contact support.' }, 403);
     const env = getEnv();
     const token = jwt.sign(
       { id: user.id, username: user.username, role: user.role },
@@ -549,6 +551,8 @@ app.post('/api/withdrawals/withdraw', async (c) => {
     if (parseFloat(amount) < parseFloat(minAmount)) {
       return c.json({ error: `Minimum withdrawal is ${minAmount}` }, 400);
     }
+    const feePct = parseFloat((await db.getSetting('withdrawal_fee_pct')) || '0');
+    const fee = parseFloat(amount) * (feePct / 100);
     if (parseFloat(user.available_balance || '0') < parseFloat(amount)) {
       return c.json({ error: 'Insufficient balance' }, 400);
     }
@@ -557,11 +561,17 @@ app.post('/api/withdrawals/withdraw', async (c) => {
       amount,
       currency,
       wallet_address: walletAddress,
+      fee,
     });
     await db.updateById('users', userId, {
       available_balance: Number(user.available_balance || 0) - parseFloat(amount),
     });
-    return c.json({ withdrawal: toCamel(withdrawal) });
+    return c.json({
+      withdrawal: toCamel(withdrawal),
+      feePct,
+      fee,
+      netAmount: parseFloat(amount) - fee,
+    });
   } catch {
     return c.json({ error: 'Internal error' }, 500);
   }
@@ -630,6 +640,20 @@ async function getSetting(key: string): Promise<string> {
     return DEFAULT_SETTINGS[key] || '';
   }
 }
+
+// Public marketplace stats — real data only (no fake numbers)
+app.get('/api/marketplace-stats', async (c) => {
+  try {
+    const totalUsers = await db.count('users');
+    const completedTasks = await db.count('completions', 'status', 'approved');
+    const totalWithdrawals = await db.count('withdrawals', 'status', 'paid');
+    const totalPayouts = await db.sum('withdrawals', 'amount', 'status', 'paid');
+    const activeTasks = await db.count('tasks', 'status', 'active');
+    return c.json({ totalUsers, completedTasks, totalWithdrawals, totalPayouts, activeTasks });
+  } catch {
+    return c.json({ totalUsers: 0, completedTasks: 0, totalWithdrawals: 0, totalPayouts: 0, activeTasks: 0 });
+  }
+});
 
 app.get('/api/admin/stats', async (c) => {
   try {
@@ -771,12 +795,14 @@ app.put('/api/admin/withdrawals/:id', async (c) => {
   try {
     if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
     const body = b(c);
-    const { status, txHash } = body;
-    await db.updateById('withdrawals', parseInt(c.req.param('id')), {
+    const { status, txHash, walletAddress } = body;
+    const patch: any = {
       status,
       tx_hash: txHash || '',
       processed_at: new Date().toISOString(),
-    });
+    };
+    if (walletAddress !== undefined) patch.wallet_address = walletAddress;
+    await db.updateById('withdrawals', parseInt(c.req.param('id')), patch);
     return c.json({ success: true });
   } catch {
     return c.json({ error: 'Internal error' }, 500);
@@ -791,6 +817,7 @@ app.get('/api/admin/settings', async (c) => {
     const bnbWallet = await getSetting('bnb_wallet');
     const minWithdraw = await getSetting('min_withdraw');
     const bonusPct = await getSetting('referral_bonus_pct');
+    const feePct = await getSetting('withdrawal_fee_pct');
     return c.json({
       settings: {
         btc_wallet: btcWallet,
@@ -798,6 +825,7 @@ app.get('/api/admin/settings', async (c) => {
         bnb_wallet: bnbWallet,
         min_withdrawal: minWithdraw,
         referral_bonus_pct: bonusPct,
+        withdrawal_fee_pct: feePct,
       },
     });
   } catch {
@@ -809,12 +837,13 @@ app.put('/api/admin/settings', async (c) => {
   try {
     if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
     const body = b(c);
-    const { btcWallet, trxWallet, bnbWallet, minWithdrawal, referralBonusPct } = body;
+    const { btcWallet, trxWallet, bnbWallet, minWithdrawal, referralBonusPct, withdrawalFeePct } = body;
     if (btcWallet !== undefined) await db.upsertSetting('btc_wallet', btcWallet);
     if (trxWallet !== undefined) await db.upsertSetting('trx_wallet', trxWallet);
     if (bnbWallet !== undefined) await db.upsertSetting('bnb_wallet', bnbWallet);
     if (minWithdrawal !== undefined) await db.upsertSetting('min_withdraw', minWithdrawal);
     if (referralBonusPct !== undefined) await db.upsertSetting('referral_bonus_pct', referralBonusPct);
+    if (withdrawalFeePct !== undefined) await db.upsertSetting('withdrawal_fee_pct', withdrawalFeePct);
     return c.json({ success: true });
   } catch {
     return c.json({ error: 'Internal error' }, 500);
@@ -850,7 +879,7 @@ app.put('/api/admin/users/:id', async (c) => {
     const id = parseInt(c.req.param('id'));
     const body = b(c);
     const set: Record<string, any> = {};
-    const allowed = ['username', 'email', 'role', 'btc_address', 'usdt_address', 'trx_address', 'available_balance', 'total_earned', 'referral_bonus', 'phone_number', 'country'];
+    const allowed = ['username', 'email', 'role', 'btc_address', 'usdt_address', 'trx_address', 'available_balance', 'total_earned', 'referral_bonus', 'phone_number', 'country', 'is_banned'];
     for (const key of allowed) {
       const camelKey = key.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
       const srcKey = body[key] !== undefined ? key : (body[camelKey] !== undefined ? camelKey : undefined);

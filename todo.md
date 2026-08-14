@@ -58,3 +58,17 @@
 - [ ] Admin Panel Tasks tab: show/edit per-task payment amount
 - [ ] Test end-to-end: register with phone/country, complete task with <30s (reject) and >=30s (pay correct amount)
 - [ ] Redeploy + push to GitHub + update guide
+
+## Round 7 (14 Aug) — Legit features from pasted breakdown (approved by user)
+- [ ] Referral links use the site's own domain (APP_DOMAIN) + per-user unique code, everywhere (Referral page, Team page, share, notifications)
+- [ ] Verify payments rely ONLY on the 3 admin wallets (no external gateway), QR + copy on Recharge/Withdraw
+- [ ] Contact = WhatsApp channel link only (no other external contact methods on site)
+- [ ] Admin Panel A-Z: full control over ALL users (edit balance/role/wallets/phone/country), tasks, withdrawals (approve/reject + set fee + change user withdrawal addresses), notifications broadcast + per-user, settings (wallets, min withdrawal, referral %, welcome msg)
+- [ ] Rebuild + deploy to Cloudflare Pages + push to GitHub + update guide
+
+## Round 7b (14 Aug) — Marketplace / Stats Hub (business-oriented, legit, aligned with AI COMPUTER PLUS branding)
+- [ ] New "Marketplace" page (sidebar link): real DB stats — total users, tasks completed, total paid out, withdrawals paid — real tables/charts, no fake data
+- [ ] Business terms guide section: Analyst, Volatility, Resistance, Support, Trend, Liquidity, Market Overview, ROI (educational context only)
+- [ ] Task packages styled as "Job Levels" with business headings in user dashboard earnings summary
+- [ ] Dashboard real stats cards: total users, tasks completed, total paid out (from DB)
+- [ ] Rebuild + deploy + push to GitHub + update guide

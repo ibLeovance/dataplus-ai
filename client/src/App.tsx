@@ -13,6 +13,7 @@ import Withdraw from "./pages/Withdraw";
 import Recharge from "./pages/Recharge";
 import Referral from "@/pages/Referral";
 import Support from "./pages/Support";
+import Marketplace from "./pages/Marketplace";
 import AdminPanel from "./pages/AdminPanel";
 import AdminLogin from "./pages/AdminLogin";
 import Login from "./pages/Login";
@@ -30,6 +31,7 @@ function Router() {
       <Route path={"/recharge"} component={Recharge} />
       <Route path={"/referral"} component={Referral} />
       <Route path={"/support"} component={Support} />
+      <Route path={"/marketplace"} component={Marketplace} />
       <Route path={"/admin-login"} component={AdminLogin} />
       <Route path={"/admin"} component={AdminPanel} />
       <Route path={"/404"} component={NotFound} />
