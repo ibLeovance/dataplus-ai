@@ -550,8 +550,8 @@ function AdminContent() {
                     <div key={u.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/20 border border-border/50">
                       <div className="flex-1">
                         <p className="font-medium text-sm">{u.username || u.email}</p>
-                        <p className="text-xs text-muted-foreground">{u.email} — Role: {u.role}</p>
-                        <p className="text-xs text-muted-foreground">Earned: ${Number(u.totalEarned || 0).toFixed(4)} | Balance: ${Number(u.availableBalance || 0).toFixed(4)}</p>
+                        <p className="text-xs text-muted-foreground">{u.email} — Role: {u.role} {u.country ? `• ${u.country}` : ""}</p>
+                        <p className="text-xs text-muted-foreground">{u.phoneNumber ? `Phone: ${u.phoneNumber}  •  ` : ""}Earned: ${Number(u.totalEarned || 0).toFixed(4)} | Balance: ${Number(u.availableBalance || 0).toFixed(4)}</p>
                       </div>
                       <div className="flex items-center gap-1">
                         <Badge variant="outline" className={u.role === "admin" ? "border-primary/20 text-primary" : "border-muted/20 text-muted-foreground"}>
@@ -1045,6 +1045,8 @@ function EditUserDialog({ user: editUserRow, onClose }: { user: any; onClose: ()
   const [btcAddress, setBtcAddress] = useState(editUserRow.btcAddress || editUserRow.btc_address || "");
   const [usdtAddress, setUsdtAddress] = useState(editUserRow.usdtAddress || editUserRow.usdt_address || "");
   const [trxAddress, setTrxAddress] = useState(editUserRow.trxAddress || editUserRow.trx_address || "");
+  const [phoneNumber, setPhoneNumber] = useState(editUserRow.phoneNumber || editUserRow.phone_number || "");
+  const [country, setCountry] = useState(editUserRow.country || "");
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -1061,6 +1063,8 @@ function EditUserDialog({ user: editUserRow, onClose }: { user: any; onClose: ()
           btc_address: btcAddress.trim(),
           usdt_address: usdtAddress.trim(),
           trx_address: trxAddress.trim(),
+          phone_number: phoneNumber.trim(),
+          country: country.trim(),
         }),
       });
       const data = await res.json();
@@ -1092,6 +1096,14 @@ function EditUserDialog({ user: editUserRow, onClose }: { user: any; onClose: ()
             <div className="space-y-2">
               <Label>Email</Label>
               <Input value={email} onChange={(e) => setEmail(e.target.value)} className="bg-secondary/50 border-border/50" />
+            </div>
+            <div className="space-y-2">
+              <Label>Phone Number</Label>
+              <Input value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} className="bg-secondary/50 border-border/50 font-mono text-xs" />
+            </div>
+            <div className="space-y-2">
+              <Label>Country</Label>
+              <Input value={country} onChange={(e) => setCountry(e.target.value)} className="bg-secondary/50 border-border/50" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">

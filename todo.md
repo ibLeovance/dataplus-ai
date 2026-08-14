@@ -41,9 +41,20 @@
 - [x] Push to GitHub (commit 5f04a06), deliver updated guide
 
 ## Round 5 (14 Aug) — Register/Login security + upline referral field
-- [ ] Register page: visible "Referral Code (Upline)" input field populated from ?ref= URL and editable
-- [ ] Backend: register rate limiting (per-IP, e.g. 5 per 15 min) + validation (empty/duplicate/spam patterns)
-- [ ] Backend: login rate limiting (per-IP, e.g. 10 per 15 min)
-- [ ] Backend: ?ref= query referral still stored on registration
-- [ ] Redeploy and verify register flow with referral code live
-- [ ] Push to GitHub, deliver updated guide note
+- [x] Register page: visible "Referral Code (Upline)" input field populated from ?ref= URL and editable
+- [x] Backend: register rate limiting (per-IP, 5/15 min) + validation (empty/duplicate/spam patterns, disposable email block)
+- [x] Backend: login rate limiting (per-IP, 10/15 min)
+- [x] Backend: ?ref= query referral still stored on registration
+- [x] Redeploy and verify register flow with referral code live (refltest99 -> referred_by 14 = admin -J6G0CER)
+- [x] Push to GitHub (commit ffe89ad), deliver updated guide note
+
+## Round 6 (14 Aug) — Phone/country register fields + 30s video watch + task amount payment
+- [ ] DB: add phone_number and country columns to users table (migration)
+- [ ] Backend: register endpoint accepts phone_number + country (validated, stored)
+- [ ] Backend: task completion requires watching video >= 30 seconds (duration_watched param), reject if < 30s
+- [ ] Backend: task payment uses configured task amount (per-task amount in settings/tasks)
+- [ ] Register page: phone number input + country dropdown with full country list
+- [ ] Admin Panel Users tab: show phone number and country per user (searchable)
+- [ ] Admin Panel Tasks tab: show/edit per-task payment amount
+- [ ] Test end-to-end: register with phone/country, complete task with <30s (reject) and >=30s (pay correct amount)
+- [ ] Redeploy + push to GitHub + update guide

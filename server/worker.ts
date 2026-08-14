@@ -213,7 +213,7 @@ function hasDisposableEmail(email: string): boolean {
 app.post('/api/auth/register', async (c) => {
   try {
     const body = b(c);
-    const { username, email, password, referralCode } = body;
+    const { username, email, password, referralCode, phoneNumber, country } = body;
     // Bot protection: rate limit per-IP (5 registers / 15 min)
     if (isRateLimited(`reg:${getClientIp(c)}`, 5, 15 * 60 * 1000)) {
       return c.json({ error: 'Too many attempts. Please wait a few minutes before registering again.' }, 429);
@@ -226,6 +226,16 @@ app.post('/api/auth/register', async (c) => {
     }
     if (hasDisposableEmail(email)) {
       return c.json({ error: 'Disposable email addresses are not allowed.' }, 400);
+    }
+    // Phone + country validation
+    const phoneClean = String(phoneNumber || '').replace(/[\s\-()]/g, '');
+    const validPhone = phoneClean.length >= 6 && phoneClean.length <= 20 && /^\+?[0-9]+$/.test(phoneClean);
+    const validCountry = country && String(country).length > 1 && String(country).length <= 60;
+    if (!validPhone) {
+      return c.json({ error: 'Please enter a valid phone number (e.g. +2348012345678).' }, 400);
+    }
+    if (!validCountry) {
+      return c.json({ error: 'Please select your country.' }, 400);
     }
     const existing = await db.select('users', { key: 'username', value: username });
     const existingEmail = await db.select('users', { key: 'email', value: email });
@@ -245,6 +255,8 @@ app.post('/api/auth/register', async (c) => {
       password_hash: passwordHash,
       referral_code: refCode,
       referred_by: referredBy,
+      phone_number: phoneClean,
+      country: String(country).trim(),
     });
     // Send welcome notification to the new registrant (graceful if table absent)
     try {
@@ -396,19 +408,30 @@ app.post('/api/tasks/complete', async (c) => {
     const userId = (c as any).user?.id;
     if (!userId) return c.json({ error: 'Not authenticated' }, 401);
     const body = b(c);
-    const { taskId, proof } = body;
+    const { taskId, proof, durationWatched } = body;
     const taskRows = await db.select('tasks', { key: 'id', value: taskId });
     const task = taskRows[0];
     if (!task) return c.json({ error: 'Task not found' }, 404);
+    // 30-second video watch rule: video task requires >= 30s watched before payment
+    const watchedSec = parseInt(String(durationWatched || '0'), 10) || 0;
+    if ((task.category === 'video' || task.category === 'watch_video') && watchedSec < 30) {
+      return c.json({ error: `Video must be watched for at least 30 seconds before payment. You watched ${watchedSec}s.`, secondsWatched: watchedSec }, 400);
+    }
     const existing = await db.select('completions', { key: 'task_id', value: taskId });
     const dup = existing.find((comp: any) => comp.user_id === userId);
     if (dup) return c.json({ error: 'Task already completed' }, 409);
+    // Payment uses the configured per-task reward amount (editable in Admin Panel)
+    const rewardAmount = Number(task.reward) || 0;
+    if (rewardAmount <= 0) {
+      return c.json({ error: 'This task currently has no reward set. Ask the admin.' }, 400);
+    }
     const completion = await db.insert('completions', {
       user_id: userId,
       task_id: taskId,
       proof: proof || '',
-      reward: task.reward,
+      reward: rewardAmount,
       currency: task.currency,
+      video_watched_seconds: watchedSec,
     });
     return c.json({ completion: toCamel(completion) });
   } catch {
@@ -827,7 +850,7 @@ app.put('/api/admin/users/:id', async (c) => {
     const id = parseInt(c.req.param('id'));
     const body = b(c);
     const set: Record<string, any> = {};
-    const allowed = ['username', 'email', 'role', 'btc_address', 'usdt_address', 'trx_address', 'available_balance', 'total_earned', 'referral_bonus'];
+    const allowed = ['username', 'email', 'role', 'btc_address', 'usdt_address', 'trx_address', 'available_balance', 'total_earned', 'referral_bonus', 'phone_number', 'country'];
     for (const key of allowed) {
       const camelKey = key.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
       const srcKey = body[key] !== undefined ? key : (body[camelKey] !== undefined ? camelKey : undefined);

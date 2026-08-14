@@ -96,6 +96,11 @@ export default function TaskDetail() {
       return;
     }
 
+    // 30-second rule: video tasks must be watched at least 30s before payment
+    if ((task.category === "video" || task.category === "watch_video") && timeElapsed < 30) {
+      toast.error(`Video must be watched for at least 30 seconds before payment. You watched ${timeElapsed}s. Click "Start Task" and let the timer run while you watch.`);
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch("/api/tasks/complete", {
@@ -104,11 +109,11 @@ export default function TaskDetail() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ taskId, proof: proof.trim(), timeSpentSeconds: timeElapsed }),
+        body: JSON.stringify({ taskId, proof: proof.trim(), durationWatched: timeElapsed }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Submission failed");
-      toast.success("Task submitted for review! You'll be credited once approved.");
+      toast.success(`Task submitted for review! Reward on approval: ${Number(task.reward || 0).toFixed(4)} ${task.currency || "USD"}`);
       navigate("/tasks");
     } catch (err: any) {
       toast.error(err.message);
@@ -184,6 +189,13 @@ export default function TaskDetail() {
                 {Math.floor(timeElapsed / 60)}:{(timeElapsed % 60).toString().padStart(2, "0")}
               </div>
               <p className="text-sm text-muted-foreground">Time spent on this task</p>
+              {(task.category === "video" || task.category === "watch_video") && (
+                <p className={`text-xs font-semibold mt-1 ${timeElapsed >= 30 ? "text-emerald-600" : "text-primary"}`}>
+                  {timeElapsed >= 30
+                    ? `✓ Video watched ${timeElapsed}s — qualifies for payment (${task.currency} ${Number(task.reward).toFixed(4)})`
+                    : `⚠ Video must be watched at least 30s before payment (${30 - timeElapsed}s remaining)`}
+                </p>
+              )}
             </div>
 
             {!timerStarted ? (
@@ -224,7 +236,7 @@ export default function TaskDetail() {
                 <Button
                   size="lg"
                   onClick={handleSubmit}
-                  disabled={submitting || timeElapsed < 5}
+                  disabled={submitting || timeElapsed < (task.category === "video" || task.category === "watch_video" ? 30 : 5)}
                   className="w-full h-12 bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition-opacity disabled:opacity-50"
                 >
                   {submitting ? (
