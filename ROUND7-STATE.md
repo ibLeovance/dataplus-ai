@@ -81,3 +81,26 @@ Login: GitHub OAuth via sandbox browser (user: ibLeovance). Session expires quic
 - server/worker.ts (Hono API), client/src/pages/AdminPanel.tsx, Referral.tsx, Support.tsx, Dashboard.tsx, Login.tsx, TaskDetail.tsx, client/src/App.tsx (routes), supabase/migrations/*.sql
 - Admin Panel tabs: Tasks, Reviews, Withdrawals, Users, Notifications, Settings.
 - WhatsApp channel: https://whatsapp.com/channel/0029VbDeCZR0G0XcheBZiT2i
+
+## 14 Aug 15:45 — ROUND 8+9 STATE (user follow-ups)
+User asked: (1) harden Performance & Security before teacher review; (2) make this whole process into a reusable skill via skill-creator.
+
+Round 8 hardening plan (todo.md lines 76-82):
+- Add security headers to ALL worker responses in worker.ts (X-Content-Type-Options: nosniff, X-Frame-Options: DENY, Referrer-Policy: strict-origin-when-cross-origin, Permissions-Policy)
+- Add long-lived Cache-Control for assets + _worker.js via /client/dist/_headers file (Pages supports _headers; note: for direct-upload projects with _worker.js, static asset headers come from _headers file at client/dist root)
+- Rate limit financial endpoints: withdrawals create + recharges create
+- Bundle audit: check client/dist/assets size; grep built JS for SUPABASE_SERVICE_ROLE_KEY (must NOT be in client)
+- Deploy via /tmp/deploy_only.sh (already defined; builds + wrangler pages deploy; CFTOKEN etc hardcoded there)
+- Verify live: curl -H "Cache-Control: no-cache" https://ai-computer-xplus-ai-fresh.pages.dev/api/marketplace-stats should show users
+
+Round 9 skill plan (todo.md lines 84-88):
+- Run: python /home/ubuntu/skills/skill-creator/scripts/init_skill.py ai-computer-plus-stack
+- Skill covers: Hono + Vite React task-earn platform; Supabase service-role backend (workers can't use anon key for admin ops); CF Pages direct upload GOTCHA: vars must be set on the project (wrangler.json vars NOT auto-applied in direct upload — set via Cloudflare dashboard or API before deploy; deploy script /home/ubuntu/dataplus-ai/deploy_new.py exists); is-a.dev DNS PR (github.com/is-a-dev/register → cnames/<name>.json + _config.json, PR ~2-3 days to merge, CNAME target must match deployed domain); admin panel pattern (separate /admin-login with role=admin guard); notifications graceful fallback (catch table absence, SQL at supabase/migrations/); rate limit pattern (Map key=IP+endpoint, windowMs, max)
+- references/: deployment.md (CF pages direct upload + vars + deploy script skeleton), is-a-dev.md (DNS PR exact steps incl. CNAME update for project rename), supabase-ddl.md (browser SQL editor method w/ GitHub login)
+- Validate: python /home/ubuntu/skills/skill-creator/scripts/quick_validate.py ai-computer-plus-stack
+- Deliver: attach /home/ubuntu/skills/ai-computer-plus-stack/SKILL.md
+
+Other facts:
+- Admin guide: /home/ubuntu/JAGORAR_ADMIN_AI_COMPUTER_PLUS.md (Hausa)
+- GH push: /home/ubuntu/gh_push_sanitized.py (run from anywhere; repo at /home/ubuntu/dataplus-ai has no .git — helper rebuilds and pushes via PAT)
+- is-a.dev PR #47183 for ai-computer-xplus.is-a.dev → ai-computer-xplus-ai-fresh.pages.dev still pending merge

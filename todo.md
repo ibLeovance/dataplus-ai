@@ -49,26 +49,40 @@
 - [x] Push to GitHub (commit ffe89ad), deliver updated guide note
 
 ## Round 6 (14 Aug) — Phone/country register fields + 30s video watch + task amount payment
-- [ ] DB: add phone_number and country columns to users table (migration)
-- [ ] Backend: register endpoint accepts phone_number + country (validated, stored)
-- [ ] Backend: task completion requires watching video >= 30 seconds (duration_watched param), reject if < 30s
-- [ ] Backend: task payment uses configured task amount (per-task amount in settings/tasks)
-- [ ] Register page: phone number input + country dropdown with full country list
-- [ ] Admin Panel Users tab: show phone number and country per user (searchable)
-- [ ] Admin Panel Tasks tab: show/edit per-task payment amount
-- [ ] Test end-to-end: register with phone/country, complete task with <30s (reject) and >=30s (pay correct amount)
-- [ ] Redeploy + push to GitHub + update guide
+- [x] DB: add phone_number and country columns to users table (migration)
+- [x] Backend: register endpoint accepts phone_number + country (validated, stored)
+- [x] Backend: task completion requires watching video >= 30 seconds (duration_watched param), reject if < 30s
+- [x] Backend: task payment uses configured task amount (per-task amount in settings/tasks)
+- [x] Register page: phone number input + country dropdown with full country list
+- [x] Admin Panel Users tab: show phone number and country per user (searchable)
+- [x] Admin Panel Tasks tab: show/edit per-task payment amount
+- [x] Test end-to-end: register with phone/country, complete task with <30s (reject) and >=30s (pay correct amount)
+- [x] Redeploy + push to GitHub + update guide
 
 ## Round 7 (14 Aug) — Legit features from pasted breakdown (approved by user)
-- [ ] Referral links use the site's own domain (APP_DOMAIN) + per-user unique code, everywhere (Referral page, Team page, share, notifications)
-- [ ] Verify payments rely ONLY on the 3 admin wallets (no external gateway), QR + copy on Recharge/Withdraw
-- [ ] Contact = WhatsApp channel link only (no other external contact methods on site)
-- [ ] Admin Panel A-Z: full control over ALL users (edit balance/role/wallets/phone/country), tasks, withdrawals (approve/reject + set fee + change user withdrawal addresses), notifications broadcast + per-user, settings (wallets, min withdrawal, referral %, welcome msg)
-- [ ] Rebuild + deploy to Cloudflare Pages + push to GitHub + update guide
+- [x] Referral links use the site's own domain (APP_DOMAIN) + per-user unique code, everywhere (Referral page, Team page, share, notifications)
+- [x] Verify payments rely ONLY on the 3 admin wallets (no external gateway), QR + copy on Recharge/Withdraw
+- [x] Contact = WhatsApp channel link only (no other external contact methods on site)
+- [x] Admin Panel A-Z: full control over ALL users (edit balance/role/wallets/phone/country), tasks, withdrawals (approve/reject + set fee + change user withdrawal addresses), notifications broadcast + per-user, settings (wallets, min withdrawal, referral %, welcome msg)
+- [x] Rebuild + deploy to Cloudflare Pages + push to GitHub + update guide
 
 ## Round 7b (14 Aug) — Marketplace / Stats Hub (business-oriented, legit, aligned with AI COMPUTER PLUS branding)
-- [ ] New "Marketplace" page (sidebar link): real DB stats — total users, tasks completed, total paid out, withdrawals paid — real tables/charts, no fake data
-- [ ] Business terms guide section: Analyst, Volatility, Resistance, Support, Trend, Liquidity, Market Overview, ROI (educational context only)
+- [x] New "Marketplace" page (sidebar link): real DB stats — total users, tasks completed, total paid out, withdrawals paid — real tables/charts, no fake data
+- [x] Business terms guide section: Analyst, Volatility, Resistance, Support, Trend, Liquidity, Market Overview, ROI (educational context only)
 - [ ] Task packages styled as "Job Levels" with business headings in user dashboard earnings summary
 - [ ] Dashboard real stats cards: total users, tasks completed, total paid out (from DB)
-- [ ] Rebuild + deploy + push to GitHub + update guide
+- [x] Rebuild + deploy + push to GitHub + update guide (marketplace-stats deploy bug: 'recharges' table missing in DB — removed; live verified totalUsers=11)
+
+## Round 8 (14 Aug) — Performance & Security hardening
+- [ ] Security headers on worker responses (X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy)
+- [ ] Long-lived Cache-Control headers for immutable assets (/_worker.js, /assets/*) via _headers file or middleware
+- [ ] Rate limit on financial endpoints (withdraw/recharge requests)
+- [ ] Bundle audit: JS size check + no secret leakage in client bundle
+- [ ] Rebuild + redeploy + verify live + mobile check
+- [ ] Push to GitHub
+
+## Round 9 (14 Aug) — Reusable skill (ai-computer-plus-stack)
+- [ ] python init_skill.py ai-computer-plus-stack
+- [ ] Write SKILL.md: full workflow — Hono worker + Vite React, Supabase service-role backend, CF Pages direct upload WITH vars set on project, is-a.dev DNS PR, admin panel pattern, graceful notifications fallback, rate limiting patterns, Supabase dashboard browser DDL method
+- [ ] references: deployment.md (wrangler vars gotcha, deploy script), is-a-dev.md (DNS PR steps), supabase-ddl.md (browser SQL editor method)
+- [ ] quick_validate.py pass, deliver skill card to user

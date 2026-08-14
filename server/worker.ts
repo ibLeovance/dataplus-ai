@@ -46,6 +46,15 @@ declare module 'hono' {
 
 const app = new Hono();
 
+// ---------- Security + performance headers ----------
+const SECURITY_HEADERS: Record<string, string> = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  'X-XSS-Protection': '1; mode=block',
+};
+
 // ---------- Global middleware ----------
 app.use('*', cors());
 app.use('*', async (c, next) => {
@@ -57,6 +66,15 @@ app.use('*', async (c, next) => {
   } catch {
     // ignore
   }
+  // Long-lived cache headers for immutable build assets (performance)
+  const path = new URL(c.req.url).pathname;
+  if (path.startsWith('/assets/') || path === '/_worker.js') {
+    c.header('Cache-Control', 'public, max-age=31536000, immutable');
+  } else {
+    // Never cache dynamic API responses or pages
+    c.header('Cache-Control', 'no-store');
+  }
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) c.header(k, v);
   // Parse JSON body
   const req = c.req;
   const ct = req.header('content-type') || '';
@@ -70,6 +88,35 @@ app.use('*', async (c, next) => {
   }
   await next();
 });
+
+// ---------- Financial-endpoint rate limiting (per-IP, 10 req / 15 min) ----------
+const FIN_LIMIT = new Map<string, { count: number; resetAt: number }>();
+app.use('/api/withdrawals', financialRateLimit);
+app.use('/api/recharges', financialRateLimit);
+app.use('/api/auth/register', financialRateLimit);
+function financialRateLimit(c: any, next: any) {
+  const ip = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
+  const key = `fin:${ip}`;
+  const now = Date.now();
+  const WINDOW_MS = 15 * 60 * 1000;
+  const MAX = 10;
+  let rec = FIN_LIMIT.get(key);
+  if (!rec || rec.resetAt <= now) {
+    rec = { count: 0, resetAt: now + WINDOW_MS };
+    FIN_LIMIT.set(key, rec);
+  }
+  rec.count += 1;
+  if (rec.count > MAX) {
+    return c.json({ error: 'Too many requests — please wait a few minutes before trying again.' }, 429);
+  }
+  // Cleanup on next request of this window if expired
+  return next();
+}
+// Pages Functions runtime has NO global setInterval/setTimeout — cleanup happens lazily here.
+function cleanupFinLimit() {
+  const now = Date.now();
+  for (const [k, v] of FIN_LIMIT) if (v.resetAt <= now) FIN_LIMIT.delete(k);
+}
 
 // ---------- Auth middleware (JWT from Authorization header) ----------
 app.use('/api/auth/*', async (c, next) => {
