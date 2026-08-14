@@ -2,16 +2,18 @@ import { createClient, type PostgrestError } from '@supabase/supabase-js';
 
 function envVal(key: string): string | undefined {
   // Works in Node (process.env) and in Cloudflare Workers/Pages runtime.
-  // In Workers runtime, `process` exists via nodejs_compat but process.env may be empty,
-  // so fall back to globalThis.env (Workers bindings) when present.
-  if (typeof process !== 'undefined' && process.env && process.env[key]) return process.env[key];
+  // In the Pages Functions runtime, env vars arrive as bindings on globalThis.env
+  // (the request env object), while process.env may be undefined at early stages,
+  // so we check globalThis.env first, then fall back to process.env.
   try {
-    if (typeof globalThis !== 'undefined' && (globalThis as any).env && (globalThis as any).env[key]) {
-      return (globalThis as any).env[key];
+    if (typeof globalThis !== 'undefined' && (globalThis as any).env) {
+      const v = (globalThis as any).env[key];
+      if (typeof v === 'string' && v.length > 0) return v;
     }
   } catch {
     // globalThis.env access can throw in some runtimes
   }
+  if (typeof process !== 'undefined' && process.env && process.env[key]) return process.env[key];
   return undefined;
 }
 
