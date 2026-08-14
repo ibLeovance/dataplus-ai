@@ -30,12 +30,20 @@
 - [x] No redeploy needed — mobile responsiveness confirmed in code (responsive CSS classes) and live pages rendered OK in browser
 
 ## Round 4 (14 Aug) — Full admin edit + notifications + luxury UI
-- [ ] Backend: notifications table + endpoints (broadcast to all users, per-user send, mark read, unread count)
-- [ ] Backend: on-registration welcome notification (auto send to new user)
-- [ ] Backend: full edit APIs in admin panel — edit any user (username, email, role, balances), edit task (all fields incl. payout amount), edit completion/withdrawal records, edit all app_settings
-- [ ] Admin UI: inline edit everywhere — edit user modal, edit task modal, edit withdrawal status note, settings full edit
-- [ ] Admin UI: Notifications tab — compose broadcast, see sent list, per-user send
-- [ ] User side: notification bell with unread badge + notification list page/drawer
-- [ ] Luxury modern UI: glassmorphism cards, gradients, smooth animations, refined typography, polished stat cards, modern login/admin pages
-- [ ] Mobile check + redeploy to ai-computer-xplus-ai-fresh.pages.dev
-- [ ] Push to GitHub, deliver updated guide
+- [x] Backend: notifications layer + endpoints (broadcast, per-user send, mark read, unread count) — graceful when notifications table absent; table SQL ready at supabase/migrations/002_notifications.sql
+- [x] Backend: on-registration welcome notification (auto send to new user)
+- [x] Backend: full edit APIs in admin panel — edit any user (username, email, role, balances), edit task (all fields incl. payout amount), edit withdrawal status note, edit all app_settings
+- [x] Admin UI: inline edit everywhere — edit user modal, edit task modal, edit withdrawal status note, settings full edit
+- [x] Admin UI: Notifications tab — compose broadcast, see sent list, per-user send
+- [x] User side: notification bell with unread badge + notification list popover
+- [x] Luxury modern UI: glassmorphism cards, gradients, smooth animations, refined typography, polished stat cards, modern login/admin pages
+- [x] Redeploy to ai-computer-xplus-ai-fresh.pages.dev — all routes 200 (correct build: build:worker then deploy ./client/dist)
+- [x] Push to GitHub (commit 5f04a06), deliver updated guide
+
+## Round 5 (14 Aug) — Register/Login security + upline referral field
+- [ ] Register page: visible "Referral Code (Upline)" input field populated from ?ref= URL and editable
+- [ ] Backend: register rate limiting (per-IP, e.g. 5 per 15 min) + validation (empty/duplicate/spam patterns)
+- [ ] Backend: login rate limiting (per-IP, e.g. 10 per 15 min)
+- [ ] Backend: ?ref= query referral still stored on registration
+- [ ] Redeploy and verify register flow with referral code live
+- [ ] Push to GitHub, deliver updated guide note

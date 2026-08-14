@@ -176,13 +176,56 @@ app.get('/api/_echo-env', async (c) => {
   return c.json({ report });
 });
 
+// ---------- Rate limiting (in-memory, per-IP; Cloudflare Pages worker process lives ~minutes, enough to stop mass signup bursts) ----------
+const rateBuckets = new Map<string, { count: number; until: number }>();
+function getClientIp(c: any): string {
+  const cf = c.req?.raw?.cf?.colo ? '' : '';
+  const realIp =
+    c.req?.header('cf-connecting-ip') ||
+    c.req?.header('x-forwarded-for')?.split(',')[0]?.trim() ||
+    'unknown';
+  return cf + realIp;
+}
+function isRateLimited(key: string, max: number, windowMs: number): boolean {
+  const now = Date.now();
+  const bucket = rateBuckets.get(key);
+  if (!bucket || bucket.until <= now) {
+    rateBuckets.set(key, { count: 1, until: now + windowMs });
+    return false;
+  }
+  if (bucket.count >= max) return true;
+  bucket.count += 1;
+  return false;
+}
+function isSpamText(s: string): boolean {
+  const v = String(s ?? '').trim().toLowerCase();
+  // reject disposable-suffix emails and extremely long/empty junk patterns
+  if (v.length < 3 || v.length > 80) return true;
+  return false;
+}
+const DISPOSABLE_SUFFIXES = ['tempmail.com', 'throwawaymail.com', 'mailinator.com', 'guerrillamail.com', 'yopmail.com', 'temp-mail.org', 'sharklasers.com', 'example.com', 'example.org'];
+function hasDisposableEmail(email: string): boolean {
+  const e = String(email ?? '').toLowerCase();
+  return DISPOSABLE_SUFFIXES.some((d) => e.endsWith(d));
+}
+
 // ---------- Auth ----------
 app.post('/api/auth/register', async (c) => {
   try {
     const body = b(c);
     const { username, email, password, referralCode } = body;
+    // Bot protection: rate limit per-IP (5 registers / 15 min)
+    if (isRateLimited(`reg:${getClientIp(c)}`, 5, 15 * 60 * 1000)) {
+      return c.json({ error: 'Too many attempts. Please wait a few minutes before registering again.' }, 429);
+    }
     if (!username || !email || !password) {
       return c.json({ error: 'All fields required' }, 400);
+    }
+    if (isSpamText(username) || isSpamText(email) || String(password).length < 6) {
+      return c.json({ error: 'Invalid input. Use a real username, email and a password of at least 6 characters.' }, 400);
+    }
+    if (hasDisposableEmail(email)) {
+      return c.json({ error: 'Disposable email addresses are not allowed.' }, 400);
     }
     const existing = await db.select('users', { key: 'username', value: username });
     const existingEmail = await db.select('users', { key: 'email', value: email });
@@ -234,6 +277,10 @@ app.post('/api/auth/login', async (c) => {
   try {
     const body = b(c);
     const { email, password } = body;
+    // Bot protection: rate limit per-IP (10 logins / 15 min)
+    if (isRateLimited(`login:${getClientIp(c)}`, 10, 15 * 60 * 1000)) {
+      return c.json({ error: 'Too many login attempts. Please wait a few minutes.' }, 429);
+    }
     const rows = await db.select('users', { key: 'email', value: email });
     const user = rows[0];
     if (!user) return c.json({ error: 'Invalid credentials' }, 401);

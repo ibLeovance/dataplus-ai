@@ -2,7 +2,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { LogIn, UserPlus } from "lucide-react";
 import { toast } from "sonner";
@@ -13,6 +13,20 @@ export default function Login() {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({ username: "", email: "", password: "", referralCode: "" });
+
+  // Prefill the upline referral code from the ?ref= query parameter (or stored ref)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get("ref");
+    if (ref) {
+      const code = ref.trim().toUpperCase();
+      setForm((f) => ({ ...f, referralCode: code }));
+      localStorage.setItem("uplineRef", code);
+    } else {
+      const stored = localStorage.getItem("uplineRef");
+      if (stored) setForm((f) => (f.referralCode ? f : { ...f, referralCode: stored }));
+    }
+  }, [isLogin]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,11 +83,17 @@ export default function Login() {
               minLength={6}
             />
             {!isLogin && (
-              <Input
-                placeholder="Referral Code (optional)"
-                value={form.referralCode}
-                onChange={(e) => setForm({ ...form, referralCode: e.target.value })}
-              />
+              <div>
+                <Input
+                  placeholder="Referral Code (Upline)"
+                  value={form.referralCode}
+                  onChange={(e) => setForm({ ...form, referralCode: e.target.value.toUpperCase() })}
+                  className="border-primary/30"
+                />
+                <p className="text-[11px] text-muted-foreground mt-1.5">
+                  Enter the code of the person who invited you — you both earn 10% of each other's rewards.
+                </p>
+              </div>
             )}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Please wait..." : isLogin ? (
