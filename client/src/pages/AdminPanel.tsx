@@ -43,6 +43,10 @@ import {
   Send,
   UserRoundPen,
   MessageSquare,
+  MonitorPlay,
+  Receipt,
+  Download,
+  Image as ImageIcon,
 } from "lucide-react";
 
 export default function AdminPanel() {
@@ -238,6 +242,7 @@ function AdminContent() {
   };
 
   const [editUser, setEditUser] = useState<any>(null);
+  const [detailUser, setDetailUser] = useState<any>(null);
 
   const handleApproveCompletion = async (id: number) => {
     try {
@@ -371,6 +376,12 @@ function AdminContent() {
           <TabsTrigger value="withdrawals" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Withdrawals</TabsTrigger>
           <TabsTrigger value="users" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Users</TabsTrigger>
           <TabsTrigger value="notifications" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Notifications</TabsTrigger>
+          <TabsTrigger value="deposits" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
+            Deposits
+            {(stats?.pendingRecharges ?? 0) > 0 && (
+              <span className="ml-1 min-w-[16px] h-4 px-1 flex items-center justify-center text-[9px] font-bold text-primary-foreground bg-warning rounded-full">{stats.pendingRecharges}</span>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="settings" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Settings</TabsTrigger>
         </TabsList>
 
@@ -572,25 +583,43 @@ function AdminContent() {
               ) : allUsers.length > 0 ? (
                 <div className="space-y-2">
                   {allUsers.map((u: any) => (
-                    <div key={u.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/20 border border-border/50">
-                      <div className="flex-1">
-                        <p className="font-medium text-sm">{u.username || u.email}</p>
-                        <p className="text-xs text-muted-foreground">{u.email} — Role: {u.role} {u.country ? `• ${u.country}` : ""}</p>
-                        <p className="text-xs text-muted-foreground">{u.phoneNumber ? `Phone: ${u.phoneNumber}  •  ` : ""}Earned: ${Number(u.totalEarned || 0).toFixed(4)} | Balance: ${Number(u.availableBalance || 0).toFixed(4)}</p>
+                    <div key={u.id} className="p-3 rounded-lg bg-secondary/20 border border-border/50">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{u.username || u.email}</p>
+                          <p className="text-xs text-muted-foreground truncate">{u.email}{u.country ? ` • ${u.country}` : ""}{u.phoneNumber ? ` • ${u.phoneNumber}` : ""}</p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Badge variant="outline" className={u.role === "admin" ? "border-primary/20 text-primary" : "border-muted/20 text-muted-foreground"}>
+                            {u.role}
+                          </Badge>
+                          <Button size="sm" variant="outline" className="border-primary/20 text-primary" onClick={() => setDetailUser(u)} title="View full profile">
+                            <UserRoundPen className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="sm" variant="outline" className="border-primary/20 text-primary" onClick={() => setEditUser(u)} title="Edit all fields">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="sm" variant="outline" className="border-primary/20 text-primary" onClick={() => handleRoleChange(u.id, u.role)}>
+                            {u.role === "admin" ? "Make User" : "Make Admin"}
+                          </Button>
+                          <Button size="sm" variant="outline" className="border-destructive/20 text-destructive" onClick={() => handleDeleteUser(u.id)} title="Delete user">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Badge variant="outline" className={u.role === "admin" ? "border-primary/20 text-primary" : "border-muted/20 text-muted-foreground"}>
-                          {u.role}
-                        </Badge>
-                        <Button size="sm" variant="outline" className="border-primary/20 text-primary" onClick={() => handleRoleChange(u.id, u.role)}>
-                          {u.role === "admin" ? "Make User" : "Make Admin"}
-                        </Button>
-                        <Button size="sm" variant="outline" className="border-primary/20 text-primary" onClick={() => setEditUser(u)} title="Edit all fields">
-                          <UserRoundPen className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button size="sm" variant="outline" className="border-destructive/20 text-destructive" onClick={() => handleDeleteUser(u.id)} title="Delete user">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                        <span>Balance: ${Number(u.availableBalance || 0).toFixed(4)}</span>
+                        <span>Earned: ${Number(u.totalEarned || 0).toFixed(4)}</span>
+                        <span>Tasks done: {u.completedTasksCount ?? 0}</span>
+                        <span>Deposits: {u.depositsCount ?? 0} (${Number(u.depositsAmount || 0).toFixed(2)})</span>
+                        <span>Withdrawals: {u.withdrawalsCount ?? 0}</span>
+                        <span>PIN: {u.hasPin ? "Yes" : "No"}</span>
+                        {u.registerTime && <span>Registered: {new Date(u.registerTime).toLocaleString()}</span>}
+                        {u.vip ? (
+                          <span className="text-primary font-medium">VIP: {u.vip.planName} ({u.vip.daysLeft} days left)</span>
+                        ) : (
+                          u.has_recharged ? <span className="text-muted-foreground">No VIP</span> : null
+                        )}
                       </div>
                     </div>
                   ))}
@@ -652,6 +681,11 @@ function AdminContent() {
           </Card>
         </TabsContent>
 
+        {/* Deposits Tab — receipt review (Round 11) */}
+        <TabsContent value="deposits">
+          <AdminDeposits />
+        </TabsContent>
+
         {/* Settings Tab */}
         <TabsContent value="settings">
           <AdminSettings />
@@ -663,6 +697,7 @@ function AdminContent() {
 
       {/* Edit User Dialog */}
       {editUser && <EditUserDialog user={editUser} onClose={() => { setEditUser(null); refreshUsers(); }} />}
+      {detailUser && <UserDetailDialog user={detailUser} onClose={() => setDetailUser(null)} />}
     </div>
   );
 }
@@ -952,6 +987,7 @@ function AdminSettings() {
   const [feePct, setFeePct] = useState("0");
   const [welcomeTitle, setWelcomeTitle] = useState("");
   const [welcomeBody, setWelcomeBody] = useState("");
+  const [videoPool, setVideoPool] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -964,6 +1000,9 @@ function AdminSettings() {
       setFeePct(settings.withdrawal_fee_pct || "0");
       setWelcomeTitle(settings.welcome_title || "Welcome to AI COMPUTER PLUS!");
       setWelcomeBody(settings.welcome_body || "You can now complete tasks to earn crypto. Invite friends with your link and earn 10% of what they earn!");
+      let pool = "";
+      try { pool = (settings.video_pool ? JSON.parse(settings.video_pool) : []).join("\n"); } catch { pool = settings.video_pool || ""; }
+      setVideoPool(pool);
     }
   }, [settings]);
 
@@ -982,6 +1021,7 @@ function AdminSettings() {
           withdrawalFeePct: feePct.trim(),
           welcomeTitle: welcomeTitle.trim(),
           welcomeBody: welcomeBody.trim(),
+          videoPool: videoPool.trim(),
         }),
       });
       const data = await res.json();
@@ -1057,6 +1097,19 @@ function AdminSettings() {
               <Textarea value={welcomeBody} onChange={(e) => setWelcomeBody(e.target.value)} className="bg-secondary/50 border-border/50 min-h-[80px]" />
             </div>
           </div>
+          <div className="pt-4 border-t border-border/50 space-y-2">
+            <p className="text-sm font-medium text-foreground flex items-center gap-2">
+              <MonitorPlay className="w-4 h-4 text-primary" />
+              Daily Task Video Pool
+            </p>
+            <Textarea
+              value={videoPool}
+              onChange={(e) => setVideoPool(e.target.value)}
+              placeholder={`One video link per line, e.g.\nhttps://www.youtube.com/watch?v=XXXXXXXXXXX\nhttps://vm.tiktok.com/xxxxxx`}
+              className="bg-secondary/50 border-border/50 min-h-[100px] font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">YouTube & TikTok links only. Each user gets one video per day, rotated per-member. Video tasks require 30s of viewing before payout.</p>
+          </div>
         </div>
         <Button onClick={handleSave} disabled={saving} className="bg-gradient-to-r bg-primary text-primary-foreground font-semibold hover:opacity-90">
           {saving ? (
@@ -1066,6 +1119,192 @@ function AdminSettings() {
         </Button>
       </CardContent>
     </Card>
+  );
+}
+
+// ---------- Deposits tab: receipt review & decision ----------
+function AdminDeposits() {
+  const { token } = useAuth();
+  const { data: depsData, loading: depsLoading, refresh: refreshDeps } = useApiFetch("/api/admin/recharges");
+  const recharges = depsData?.recharges || depsData || [];
+  const [deciding, setDeciding] = useState<number | null>(null);
+  const [noteDraft, setNoteDraft] = useState<Record<number, string>>({});
+
+  const handleDecision = async (id: number, decision: "approved" | "rejected") => {
+    setDeciding(id);
+    try {
+      const res = await fetch(`/api/admin/recharges/${id}/decision`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ decision, note: noteDraft[id] || "" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update deposit");
+      toast.success(decision === "approved" ? "Deposit approved — tasks unlocked for the user." : "Deposit rejected.");
+      refreshDeps();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setDeciding(null);
+    }
+  };
+
+  const statusBadge = (status: string) => {
+    if (status === "approved")
+      return <Badge className="bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/20">Approved</Badge>;
+    if (status === "rejected")
+      return <Badge className="bg-destructive/15 text-destructive hover:bg-destructive/25">Rejected</Badge>;
+    return <Badge className="bg-warning/15 text-warning-foreground hover:bg-warning/25">Pending</Badge>;
+  };
+
+  const downloadReceipt = (r: any) => {
+    if (!r.receiptUrl) return;
+    const a = document.createElement("a");
+    a.href = r.receiptUrl;
+    const ext = (r.receiptMime || (r.receiptUrl || "").split(";")[0].split("/")[1] || "png").split("/").pop() || "png";
+    a.download = `receipt-${r.id}.${ext}`;
+    a.click();
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card className="bg-card">
+        <CardHeader className="flex flex-row items-center justify-between py-3">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Receipt className="w-5 h-5 text-primary" /> Deposit Requests
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">Review payment receipts, approve to unlock tasks or reject invalid deposits.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={refreshDeps} className="border-primary/20 text-primary">
+            Refresh
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {depsLoading ? (
+            <div className="flex justify-center py-10">
+              <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
+            </div>
+          ) : recharges.length === 0 ? (
+            <div className="text-center py-10 text-sm text-muted-foreground">
+              <Receipt className="w-10 h-10 mx-auto mb-2 text-primary/20" />
+              No deposit requests yet. Requests appear here after users upload payment receipts.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {recharges.map((r: any) => (
+                <div key={r.id} className="border border-border rounded-xl p-4 space-y-3">
+                  <div className="flex flex-wrap items-center gap-2 justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
+                        <span className="text-xs font-semibold text-primary">{(r.userName || "?").charAt(0).toUpperCase()}</span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold">{r.userName || "User"} <span className="font-normal text-muted-foreground text-xs">({r.userEmail || "no email"})</span></p>
+                        <p className="text-[11px] text-muted-foreground">{r.paymentMethod || "—"} • ${Number(r.amount || 0).toFixed(2)}#{r.id}</p>
+                        <p className="text-[10px] text-muted-foreground/70">{r.createdAt ? new Date(r.createdAt).toLocaleString() : ""}</p>
+                      </div>
+                      {statusBadge(r.status || "pending")}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {(r.status === "pending") && (
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={() => handleDecision(r.id, "approved")}
+                            disabled={deciding === r.id}
+                            className="bg-emerald-600 text-white hover:bg-emerald-700 h-8"
+                          >
+                            <CheckCircle2 className="w-4 h-4 mr-1" /> Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDecision(r.id, "rejected")}
+                            disabled={deciding === r.id}
+                            className="border-destructive/40 text-destructive hover:bg-destructive/10 h-8"
+                          >
+                            <XCircle className="w-4 h-4 mr-1" /> Reject
+                          </Button>
+                        </>
+                      )}
+                      {r.receiptUrl && (
+                        <Button size="sm" variant="outline" onClick={() => downloadReceipt(r)} className="border-primary/20 text-primary h-8">
+                          <Download className="w-4 h-4 mr-1" /> Receipt
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  {r.receiptUrl && (
+                    <div className="border border-border rounded-lg overflow-hidden bg-secondary/30">
+                      <img src={r.receiptUrl} alt="Payment receipt" className="max-h-[380px] w-full object-contain" />
+                    </div>
+                  )}
+                  {!r.receiptUrl && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground border border-dashed border-border rounded-lg p-3">
+                      <ImageIcon className="w-4 h-4" /> No receipt image attached
+                    </div>
+                  )}
+                  {r.adminNote && (
+                    <p className="text-xs text-muted-foreground">Admin note: {r.adminNote}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function UserDetailDialog({ user: row, onClose }: { user: any; onClose: () => void }) {
+  return (
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto bg-card border-border">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <UserRoundPen className="w-4 h-4 text-primary" />
+            User Profile — {row.username || row.email || `#${row.id}`}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          <DetailRow label="ID" value={String(row.id)} />
+          <DetailRow label="Username" value={row.username || "—"} />
+          <DetailRow label="Email" value={row.email || "—"} />
+          <DetailRow label="Phone" value={row.phoneNumber ? `${row.country ? row.country + " " : ""}${row.phoneNumber}` : "—"} />
+          <DetailRow label="Country" value={row.country || "—"} />
+          <DetailRow label="Role" value={row.role || "user"} />
+          <DetailRow label="Register Time" value={row.registerTime ? new Date(row.registerTime).toLocaleString() : "—"} />
+          <DetailRow label="Available Balance" value={`$${Number(row.availableBalance || 0).toFixed(4)}`} />
+          <DetailRow label="Total Earned" value={`$${Number(row.totalEarned || 0).toFixed(4)}`} />
+          <DetailRow label="Referral Bonus" value={`$${Number(row.referralBonus || 0).toFixed(4)}`} />
+          <DetailRow label="Deposit Amount" value={`$${Number(row.depositAmount || 0).toFixed(2)} (${row.has_recharged ? "has recharged" : "not yet"})`} />
+          <DetailRow label="Tasks Completed" value={`${row.completedTasksCount ?? 0} (paid: ${row.approvedTasksCount ?? 0} | free: ${row.freeTasksCount ?? 0})`} />
+          <DetailRow label="Tasks Amount (approved)" value={`$${Number(row.completedTasksAmount || 0).toFixed(4)}`} />
+          <DetailRow label="Withdrawals" value={`${row.withdrawalsCount ?? 0} — $${Number(row.withdrawalsAmount || 0).toFixed(4)}`} />
+          <DetailRow label="Deposits" value={`${row.depositsCount ?? 0} approved — $${Number(row.depositsAmount || 0).toFixed(2)}`} />
+          <DetailRow label="Withdraw PIN" value={row.hasPin ? "Set" : "Not set"} />
+          <DetailRow label="Status" value={row.isBanned ? "Banned" : "Active"} />
+          {row.vip && (
+            <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+              <p className="font-semibold text-primary mb-1">{row.vip.planName}</p>
+              <p className="text-xs text-muted-foreground">Task pay: ${Number(row.vip.taskAmount).toFixed(2)} • Daily rate: ${Number(row.vip.dailyEarnRate).toFixed(2)} • Validity: {row.vip.validityDays} days ({row.vip.daysLeft} left)</p>
+              <p className="text-xs text-muted-foreground">Expires: {new Date(row.vip.validUntil).toLocaleString()}</p>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-1.5 border-b border-border/40 last:border-0">
+      <span className="text-xs text-muted-foreground w-32 shrink-0">{label}</span>
+      <span className="text-xs font-medium text-right break-all">{value}</span>
+    </div>
   );
 }
 
