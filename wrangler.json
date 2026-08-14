@@ -12,5 +12,11 @@
     "bcryptjs",
     "nanoid",
     "@supabase/supabase-js"
-  ]
+  ],
+  "vars": {
+    "SUPABASE_URL": "https://uqtirisxgqmhxupncink.supabase.co",
+    "SUPABASE_SERVICE_ROLE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxdGlyaXN4Z3FtaHh1cG5jaW5rIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjY1NjI0MywiZXhwIjoyMTAyMjMyMjQzfQ.patjJ_GGmXM2xrgLikXEYeHz6WZzDZPwH8vAyatB438",
+    "JWT_SECRET": "dataplus-ai-secret",
+    "APP_DOMAIN": "dataplus-ai-fresh.pages.dev"
+  }
 }

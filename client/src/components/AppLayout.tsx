@@ -16,6 +16,7 @@ import {
   Bookmark,
   Search,
   Coins,
+  Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
 

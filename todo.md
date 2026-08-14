@@ -8,8 +8,8 @@
 - [x] Push update to GitHub main (commit 16af56da)
 
 ## New user requests (14 Aug)
-- [ ] Add RECHARGE page showing admin payment wallets (TRX, BTC, USDT) with Copy + QR scan buttons
-- [ ] Add Recharge link to the sidebar navigation (visible when logged in)
-- [ ] Deploy updated site to Cloudflare Pages
+- [x] Add RECHARGE page showing admin payment wallets (TRX, BTC, USDT) with Copy + QR scan buttons
+- [x] Add Recharge link to the sidebar navigation (visible when logged in)
+- [x] Restore vars (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET, APP_DOMAIN) in wrangler.json after sandbox reset, redeploy to Cloudflare Pages, verify /api/withdrawals/admin-wallets + /recharge live
 - [ ] Set up ai-computer-xplus.is-a.dev custom domain on the Cloudflare Pages project
 - [ ] Verify live site on new domain; deliver admin instructions (login, add tasks, review withdrawals)
