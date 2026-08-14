@@ -19,18 +19,17 @@ import {
   Wallet,
   Headset,
   Store,
+  Crown,
 } from "lucide-react";
 import { toast } from "sonner";
 
 const navItems = [
   { icon: Home, label: "Home", path: "/dashboard" },
-  { icon: Compass, label: "Discover", path: "/tasks" },
+  { icon: Compass, label: "Task", path: "/tasks" },
+  { icon: Crown, label: "VIP Task", path: "/vip" },
   { icon: Users, label: "Team", path: "/referral" },
   { icon: UserCircle, label: "Personal Center", path: "/wallet" },
-  { icon: Store, label: "Marketplace", path: "/marketplace" },
   { icon: Award, label: "Milestone", path: "/dashboard" },
-  { icon: TrendingUp, label: "Upline", path: "/dashboard" },
-  { icon: PiggyBank, label: "Savings Jar", path: "/wallet" },
   { icon: Headset, label: "Support Center", path: "/support" },
 ];
 
@@ -131,7 +130,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Navigation */}
       <nav className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto">
-        {navItems.map((item) => {
+        {navItems.filter((item) => item.path !== "/marketplace" || user.role === "admin").map((item) => {
           const isActive = location === item.path;
           return (
             <button
@@ -321,6 +320,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 )}
               </div>
 
+              {/* About */}
+              <button
+                onClick={() => navigate("/about")}
+                className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors border border-border/60"
+              >
+                About
+              </button>
               {/* User */}
               <div className="flex items-center gap-2 pl-3 border-l border-border">
                 <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
