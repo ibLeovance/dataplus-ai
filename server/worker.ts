@@ -3,7 +3,7 @@ import { cors } from 'hono/cors';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { nanoid } from 'nanoid';
-import { db, toCamel, toCamelList } from './db';
+import { db, toCamel, toCamelList, getSupabase } from './db';
 import { router as authRouter } from './routers/auth';
 import { router as taskRouter } from './routers/tasks';
 import { router as referralRouter } from './routers/referral';
@@ -151,8 +151,9 @@ app.use('/api/health', exempt);
 app.use('/api/_echo-env', exempt);
 app.use('/api/share/links', exempt);
 app.use('/api/withdrawals/admin-wallets', exempt);
+app.use('/api/vip-plans', exempt);
 app.use('/api/marketplace-stats', exempt);
-const PUBLIC_API_PATHS = ['/api/health', '/api/_echo-env', '/api/share/links', '/api/withdrawals/admin-wallets', '/api/marketplace-stats'];
+const PUBLIC_API_PATHS = ['/api/health', '/api/_echo-env', '/api/share/links', '/api/withdrawals/admin-wallets', '/api/marketplace-stats', '/api/vip-plans'];
 
 app.use('/api/*', async (c, next) => {
   // Public endpoints skip authentication; /api/auth/* paths are handled by the auth middleware above
@@ -397,6 +398,66 @@ app.put('/api/auth/profile', async (c) => {
   }
 });
 
+app.post('/api/auth/change-password', async (c) => {
+  try {
+    const userId = (c as any).user?.id;
+    if (!userId) return c.json({ error: 'Not authenticated' }, 401);
+    const body = b(c);
+    const { oldPassword, newPassword } = body;
+    if (!oldPassword || !newPassword) return c.json({ error: 'oldPassword and newPassword are required' }, 400);
+    if (String(newPassword).length < 6) return c.json({ error: 'New password must be at least 6 characters' }, 400);
+    const users = await db.select('users', { key: 'id', value: userId });
+    const user = users?.[0];
+    if (!user) return c.json({ error: 'User not found' }, 404);
+    const valid = await bcrypt.compare(String(oldPassword), (user as any).password_hash || '');
+    if (!valid) return c.json({ error: 'Current password is incorrect' }, 400);
+    const { error: updErr } = await getSupabase().from('users').update({ password_hash: await bcrypt.hash(String(newPassword), 10) }).eq('id', userId).select().single();
+    if (updErr) return c.json({ error: 'Update failed: ' + updErr.message }, 500);
+    return c.json({ ok: true, message: 'Password changed successfully' });
+  } catch (err) {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+
+// Withdraw PIN is stored in app_settings.withdraw_pins as JSON: { "userId": "pin" }
+async function getWithdrawPins(): Promise<Record<string, string>> {
+  try {
+    const raw = await db.getSetting('withdraw_pins');
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+app.get('/api/auth/my-pin', async (c) => {
+  try {
+    const userId = (c as any).user?.id;
+    if (!userId) return c.json({ error: 'Not authenticated' }, 401);
+    const pins = await getWithdrawPins();
+    return c.json({ pin: pins[String(userId)] || '' });
+  } catch {
+    return c.json({ pin: '' });
+  }
+});
+
+app.put('/api/auth/my-pin', async (c) => {
+  try {
+    const userId = (c as any).user?.id;
+    if (!userId) return c.json({ error: 'Not authenticated' }, 401);
+    const body = b(c);
+    const pin = String(body.pin ?? '').replace(/[^0-9]/g, '');
+    if (pin.length < 4 || pin.length > 6) return c.json({ error: 'PIN must be 4 to 6 digits' }, 400);
+    const pins = await getWithdrawPins();
+    pins[String(userId)] = pin;
+    await db.upsertSetting('withdraw_pins', JSON.stringify(pins));
+    return c.json({ ok: true, message: 'Withdraw PIN saved' });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+
 app.get('/api/auth/overview', async (c) => {
   try {
     const userId = (c as any).user?.id;
@@ -469,8 +530,15 @@ app.post('/api/tasks/complete', async (c) => {
     const existing = await db.select('completions', { key: 'task_id', value: taskId });
     const dup = existing.find((comp: any) => comp.user_id === userId);
     if (dup) return c.json({ error: 'Task already completed' }, 409);
-    // Payment uses the configured per-task reward amount (editable in Admin Panel)
-    const rewardAmount = Number(task.reward) || 0;
+    // Free-task earnings are credited to the platform admin account; VIP-task
+    // earnings go directly to the user's wallet (per teacher's instruction).
+    const vip = await getActiveVip(userId);
+    let rewardAmount = Number(task.reward) || 0;
+    let funding = 'admin'; // free task → platform admin account
+    if (vip) {
+      rewardAmount = Number(vip.taskAmount) || rewardAmount;
+      funding = 'user'; // VIP task → pays the user
+    }
     if (rewardAmount <= 0) {
       return c.json({ error: 'This task currently has no reward set. Ask the admin.' }, 400);
     }
@@ -481,8 +549,58 @@ app.post('/api/tasks/complete', async (c) => {
       reward: rewardAmount,
       currency: task.currency,
       video_watched_seconds: watchedSec,
+      funding: funding,
+      status: funding === 'admin' ? 'admin_credited' : 'approved',
+    }).catch(async (e: any) => {
+      if (String(e.message || '').includes('funding') || String(e.message || '').includes('column')) {
+        // The 'funding' column does not exist in this environment yet.
+        // Retry without it; funding is still applied to balances immediately.
+        return db.insert('completions', {
+          user_id: userId,
+          task_id: taskId,
+          proof: proof || '',
+          reward: rewardAmount,
+          currency: task.currency,
+          video_watched_seconds: watchedSec,
+          status: funding === 'admin' ? 'admin_credited' : 'approved',
+        });
+      }
+      throw e;
     });
-    return c.json({ completion: toCamel(completion) });
+    if (funding === 'user' && vip) {
+      // Pay the VIP task reward to the user immediately
+      try {
+        const userRows = await db.select('users', { key: 'id', value: userId });
+        const user = userRows[0];
+        if (user) {
+          await db.updateById('users', userId, {
+            total_earned: Number(user.total_earned || 0) + rewardAmount,
+            available_balance: Number(user.available_balance || 0) + rewardAmount,
+          });
+          try {
+            await db.insertNotification({
+              user_id: userId,
+              title: 'VIP Task Paid',
+              body: `Your VIP task paid $${rewardAmount.toFixed(2)} directly to your wallet (${vip.name}).`,
+              kind: 'info',
+            });
+          } catch { /* notifications table may not exist */ }
+        }
+      } catch { /* payment failure should not block completion recording */ }
+    } else {
+      // Free task: credit the platform admin account
+      try {
+        const admins = await db.select('users', { key: 'role', value: 'admin' });
+        if (admins.length > 0) {
+          const admin = admins[0];
+          await db.updateById('users', admin.id, {
+            total_earned: Number(admin.total_earned || 0) + rewardAmount,
+            available_balance: Number(admin.available_balance || 0) + rewardAmount,
+          });
+        }
+      } catch { /* admin credit failure should not block completion recording */ }
+    }
+    return c.json({ completion: toCamel(completion), funding });
   } catch {
     return c.json({ error: 'Internal error' }, 500);
   }
@@ -589,7 +707,8 @@ app.post('/api/withdrawals/withdraw', async (c) => {
     const userId = (c as any).user?.id;
     if (!userId) return c.json({ error: 'Not authenticated' }, 401);
     const body = b(c);
-    const { amount, currency, walletAddress } = body;
+    const { amount, walletAddress, pin } = body;
+    const currency = 'TRX'; // single-currency payout (TRX); wallets removed from UI per Round 14
     const rows = await db.select('users', { key: 'id', value: userId });
     const user = rows[0];
     if (!user) return c.json({ error: 'User not found' }, 404);
@@ -598,10 +717,22 @@ app.post('/api/withdrawals/withdraw', async (c) => {
     if (parseFloat(amount) < parseFloat(minAmount)) {
       return c.json({ error: `Minimum withdrawal is ${minAmount}` }, 400);
     }
-    const feePct = parseFloat((await db.getSetting('withdrawal_fee_pct')) || '0');
+    const feePct = parseFloat((await db.getSetting('withdrawal_fee_pct')) || '0') || 5;
     const fee = parseFloat(amount) * (feePct / 100);
     if (parseFloat(user.available_balance || '0') < parseFloat(amount)) {
       return c.json({ error: 'Insufficient balance' }, 400);
+    }
+    // Withdraw PIN verification (4-6 digits stored per user in app_settings 'withdraw_pins')
+    const digits = String(pin || '').replace(/[^0-9]/g, '');
+    if (digits.length < 4 || digits.length > 6) {
+      return c.json({ error: 'Please enter your 4-6 digit Withdraw PIN (set it in Personal Center)' }, 400);
+    }
+    const pinsRaw = await db.getSetting('withdraw_pins');
+    let pins: Record<string, string> = {};
+    try { pins = JSON.parse(pinsRaw); } catch { pins = {}; }
+    const userPin = pins[String(userId)] || '';
+    if (!userPin || userPin !== digits) {
+      return c.json({ error: 'Withdraw PIN is incorrect' }, 403);
     }
     const withdrawal = await db.insert('withdrawals', {
       user_id: userId,
@@ -609,6 +740,7 @@ app.post('/api/withdrawals/withdraw', async (c) => {
       currency,
       wallet_address: walletAddress,
       fee,
+      status: 'processing',
     });
     await db.updateById('users', userId, {
       available_balance: Number(user.available_balance || 0) - parseFloat(amount),
@@ -619,7 +751,8 @@ app.post('/api/withdrawals/withdraw', async (c) => {
       fee,
       netAmount: parseFloat(amount) - fee,
     });
-  } catch {
+  } catch (err) {
+    console.error('[withdraw] error:', err instanceof Error ? err.message : err);
     return c.json({ error: 'Internal error' }, 500);
   }
 });
@@ -631,6 +764,141 @@ app.get('/api/withdrawals/my-withdrawals', async (c) => {
     const all = await db.select('withdrawals', { key: 'user_id', value: userId });
     const sorted = [...all].sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
     return c.json({ withdrawals: toCamelList(sorted) });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+app.get('/api/withdrawals/my', async (c) => {
+  return await (async () => {
+    const userId = (c as any).user?.id;
+    if (!userId) return c.json({ error: 'Not authenticated' }, 401);
+    const all = await db.select('withdrawals', { key: 'user_id', value: userId });
+    const sorted = [...all].sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
+    return c.json({ withdrawals: toCamelList(sorted) });
+  })();
+});
+
+// ---------- VIP Task ----------
+const DEFAULT_VIP_PLANS = [
+  { id: 1, name: 'VIP Bronze', depositAmount: 5, dailyEarnRate: 0.08, taskAmount: 0.10, maxDailyTasks: 5, validityDays: 60, status: 'active' },
+  { id: 2, name: 'VIP Silver', depositAmount: 50, dailyEarnRate: 1.00, taskAmount: 1.20, maxDailyTasks: 8, validityDays: 60, status: 'active' },
+  { id: 3, name: 'VIP Gold', depositAmount: 100, dailyEarnRate: 2.20, taskAmount: 2.60, maxDailyTasks: 10, validityDays: 120, status: 'active' },
+  { id: 4, name: 'VIP Platinum', depositAmount: 300, dailyEarnRate: 7.50, taskAmount: 8.00, maxDailyTasks: 12, validityDays: 120, status: 'active' },
+  { id: 5, name: 'VIP Diamond', depositAmount: 500, dailyEarnRate: 14.00, taskAmount: 15.00, maxDailyTasks: 15, validityDays: 240, status: 'active' },
+  { id: 6, name: 'VIP Elite', depositAmount: 1000, dailyEarnRate: 35.00, taskAmount: 38.00, maxDailyTasks: 20, validityDays: 365, status: 'not_yet_active' },
+];
+
+async function getVipPlans(): Promise<any[]> {
+  try {
+    const raw = await db.getSetting('vip_plans');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) return parsed;
+    }
+  } catch { /* fall through */ }
+  await db.upsertSetting('vip_plans', JSON.stringify(DEFAULT_VIP_PLANS));
+  return DEFAULT_VIP_PLANS;
+}
+
+async function getVipPurchases(): Promise<any[]> {
+  try {
+    const raw = await db.getSetting('vip_purchases');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch { /* fall through */ }
+  return [];
+}
+
+async function saveVipPurchases(purchases: any[]): Promise<void> {
+  await db.upsertSetting('vip_purchases', JSON.stringify(purchases));
+}
+
+/** Return the user's currently ACTIVE VIP plan (matching amount purchased & not expired), or null */
+async function getActiveVip(userId: number): Promise<any | null> {
+  let purchases = await getVipPurchases();
+  const plans = await getVipPlans();
+  const now = Date.now();
+  let changed = false;
+  for (const p of purchases) {
+    if (Number(p.userId) !== Number(userId)) continue;
+    if (p.status === 'active' && p.validUntil && new Date(p.validUntil).getTime() <= now) {
+      p.status = 'expired';
+      changed = true;
+    }
+  }
+  if (changed) await saveVipPurchases(purchases);
+  for (const p of purchases) {
+    if (Number(p.userId) !== Number(userId)) continue;
+    if (p.status !== 'active') continue;
+    if (p.validUntil && new Date(p.validUntil).getTime() <= now) continue;
+    const plan = plans.find((pl: any) => pl.name === p.planName);
+    return plan ? { ...plan, purchasedAt: p.purchasedAt, validUntil: p.validUntil, purchaseId: p.id } : null;
+  }
+  return null;
+}
+
+app.get('/api/vip-plans', async (c) => {
+  try {
+    const plans = await getVipPlans();
+    return c.json({ plans });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+
+app.get('/api/vip-my', async (c) => {
+  c.header('cache-control', 'no-store');
+  try {
+    const userId = (c as any).user?.id;
+    if (!userId) return c.json({ error: 'Not authenticated' }, 401);
+    const vip = await getActiveVip(userId);
+    return c.json({ vip });
+  } catch {
+    return c.json({ vip: null });
+  }
+});
+
+/**
+ * VIP purchase: user expresses intent to buy a VIP tier. The tier activates when
+ * admin approves a recharge matching the plan's deposit amount (recharge decision
+ * endpoint handles activation). VIP Elite ($1000) is not yet active.
+ */
+app.post('/api/vip-plans/:id/purchase', async (c) => {
+  try {
+    const userId = (c as any).user?.id;
+    if (!userId) return c.json({ error: 'Not authenticated' }, 401);
+    const plans = await getVipPlans();
+    const plan = plans.find((p: any) => Number(p.id) === parseInt(c.req.param('id')));
+    if (!plan) return c.json({ error: 'Plan not found' }, 404);
+    if (plan.status === 'not_yet_active') {
+      return c.json({ error: 'This VIP tier is not yet active' }, 400);
+    }
+    const existing = await getActiveVip(userId);
+    if (existing) return c.json({ error: 'You already have an active VIP plan' }, 400);
+    const purchases = await getVipPurchases();
+    // Remove any previously expired/pending plans for this user
+    const active = await getActiveVip(userId).then(() => null); // already checked above
+    const pending = purchases.find((p: any) => Number(p.userId) === Number(userId) && p.status === 'pending');
+    if (pending) pending.status = 'cancelled';
+    purchases.push({
+      id: purchases.length ? Math.max(...purchases.map((p: any) => Number(p.id || 0))) + 1 : 1,
+      userId,
+      planName: plan.name,
+      planId: Number(plan.id),
+      amount: Number(plan.depositAmount),
+      dailyEarnRate: Number(plan.dailyEarnRate),
+      taskAmount: Number(plan.taskAmount),
+      maxDailyTasks: Number(plan.maxDailyTasks),
+      validityDays: Number(plan.validityDays),
+      status: 'pending',
+      purchasedAt: new Date().toISOString(),
+      validFrom: new Date().toISOString(),
+      validUntil: new Date(Date.now() + Number(plan.validityDays) * 86400000).toISOString(),
+    });
+    await saveVipPurchases(purchases);
+    return c.json({ success: true, plan, message: 'VIP purchase intent recorded. Recharge the plan amount and submit your receipt — admin approval activates your VIP tasks.' });
   } catch {
     return c.json({ error: 'Internal error' }, 500);
   }
@@ -677,6 +945,9 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   bnb_wallet: '0x5ECb8F07bb486c1d630e393849e7d5D4aD2608b8',
   min_withdraw: '5.00',
   referral_bonus_pct: '10',
+  withdrawal_fee_pct: '5',
+  video_pool: '',
+  withdraw_pins: '',
 };
 
 async function getSetting(key: string): Promise<string> {
@@ -865,6 +1136,8 @@ app.get('/api/admin/settings', async (c) => {
     const minWithdraw = await getSetting('min_withdraw');
     const bonusPct = await getSetting('referral_bonus_pct');
     const feePct = await getSetting('withdrawal_fee_pct');
+    const videoPool = await getSetting('video_pool');
+    const withdrawPins = await getSetting('withdraw_pins');
     return c.json({
       settings: {
         btc_wallet: btcWallet,
@@ -873,6 +1146,8 @@ app.get('/api/admin/settings', async (c) => {
         min_withdrawal: minWithdraw,
         referral_bonus_pct: bonusPct,
         withdrawal_fee_pct: feePct,
+        video_pool: videoPool,
+        withdraw_pins: withdrawPins,
       },
     });
   } catch {
@@ -884,13 +1159,21 @@ app.put('/api/admin/settings', async (c) => {
   try {
     if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
     const body = b(c);
-    const { btcWallet, trxWallet, bnbWallet, minWithdrawal, referralBonusPct, withdrawalFeePct } = body;
+    const { btcWallet, trxWallet, bnbWallet, minWithdrawal, referralBonusPct, withdrawalFeePct, videoPool } = body;
     if (btcWallet !== undefined) await db.upsertSetting('btc_wallet', btcWallet);
     if (trxWallet !== undefined) await db.upsertSetting('trx_wallet', trxWallet);
     if (bnbWallet !== undefined) await db.upsertSetting('bnb_wallet', bnbWallet);
     if (minWithdrawal !== undefined) await db.upsertSetting('min_withdraw', minWithdrawal);
     if (referralBonusPct !== undefined) await db.upsertSetting('referral_bonus_pct', referralBonusPct);
     if (withdrawalFeePct !== undefined) await db.upsertSetting('withdrawal_fee_pct', withdrawalFeePct);
+    // Video pool: JSON array of YouTube/TikTok watch-video links (daily rotating)
+    if (videoPool !== undefined) {
+      const arr = Array.isArray(videoPool) ? videoPool : String(videoPool).split('\n').map((s: string) => s.trim()).filter(Boolean);
+      if (arr.length === 0 || !arr.every((u: any) => typeof u === 'string' && /^https?:\/\//.test(u))) {
+        return c.json({ error: 'videoPool must be a non-empty list of URLs starting with http' }, 400);
+      }
+      await db.upsertSetting('video_pool', JSON.stringify(arr));
+    }
     return c.json({ success: true });
   } catch {
     return c.json({ error: 'Internal error' }, 500);
@@ -898,15 +1181,69 @@ app.put('/api/admin/settings', async (c) => {
 });
 
 app.get('/api/admin/users', async (c) => {
+  c.header('cache-control', 'no-store');
   try {
     if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
     const allUsers = await db.select('users');
-    return c.json({ users: allUsers.map((u: any) => { const { password_hash: _ph, ...s } = u; return s; }) });
-  } catch {
+    const pinsRaw = await db.getSetting('withdraw_pins');
+    let pins: Record<string, string> = {};
+    try { pins = JSON.parse(pinsRaw); } catch { pins = {}; }
+    const purchases = await getVipPurchases().catch(() => []);
+    const plans = await getVipPlans().catch(() => []);
+    const now = Date.now();
+    // Batch all per-user selects into 3 queries to stay under Cloudflare's
+    // per-invocation subrequest limit (N+1 would exceed it for large user bases).
+    const userIds = allUsers.map((u: any) => u.id);
+    const [allTasks, allWithdrawals, allDeposits] = await Promise.all([
+      db.select('completions', { key: 'user_id', value: userIds }),
+      db.select('withdrawals', { key: 'user_id', value: userIds }),
+      db.select('recharges', { key: 'user_id', value: userIds }),
+    ]);
+    const tasksByUser = new Map<number, any[]>();
+    for (const t of allTasks) { const k = Number(t.user_id); tasksByUser.set(k, [...(tasksByUser.get(k) || []), t]); }
+    const wdByUser = new Map<number, any[]>();
+    for (const w of allWithdrawals) { const k = Number(w.user_id); wdByUser.set(k, [...(wdByUser.get(k) || []), w]); }
+    const depByUser = new Map<number, any[]>();
+    for (const d of allDeposits) { const k = Number(d.user_id); depByUser.set(k, [...(depByUser.get(k) || []), d]); }
+    const enriched = allUsers.map((u: any) => {
+        const { password_hash: _ph, ...s } = u;
+        const taskRows = tasksByUser.get(u.id) || [];
+        const completedCount = taskRows.filter((comp: any) => comp.status === 'approved').length;
+        const approvedCount = taskRows.filter((comp: any) => comp.status === 'approved' && comp.funding !== 'admin').length;
+        const freeTasksCount = taskRows.filter((comp: any) => comp.status === 'approved' && comp.funding === 'admin').length;
+        const wdRows = wdByUser.get(u.id) || [];
+        const depositRows = depByUser.get(u.id) || [];
+        const approvedDeposits = depositRows.filter((d: any) => d.status === 'approved');
+        // Active VIP for this user
+        let vipInfo: any = null;
+        for (const p of purchases) {
+          if (Number(p.userId) === Number(u.id) && p.status === 'active' && (!p.validUntil || new Date(p.validUntil).getTime() > now)) {
+            const plan = plans.find((pl: any) => pl.name === p.planName);
+            vipInfo = plan ? { planName: plan.name, depositAmount: plan.depositAmount, dailyEarnRate: plan.dailyEarnRate, taskAmount: plan.taskAmount, validityDays: plan.validityDays, validUntil: p.validUntil, daysLeft: Math.max(0, Math.ceil((new Date(p.validUntil).getTime() - now) / 86400000)) } : null;
+            break;
+          }
+        }
+        return {
+          ...s,
+          completedTasksCount: completedCount,
+          approvedTasksCount: approvedCount,
+          freeTasksCount,
+          completedTasksAmount: Number(taskRows.filter((comp: any) => comp.status === 'approved').reduce((acc, comp) => acc + Number(comp.reward || 0), 0)),
+          withdrawalsCount: wdRows.length,
+          withdrawalsAmount: wdRows.reduce((acc, w) => acc + Number(w.amount || 0), 0),
+          depositsCount: approvedDeposits.length,
+          depositsAmount: approvedDeposits.reduce((acc, d) => acc + Number(d.amount || 0), 0),
+          registerTime: u.created_at || null,
+          hasPin: Boolean(pins[String(u.id)]),
+          vip: vipInfo,
+        };
+    });
+    return c.json({ users: enriched });
+  } catch (err) {
+    console.error('[admin/users] error:', err instanceof Error ? err.message : err);
     return c.json({ error: 'Internal error' }, 500);
   }
 });
-
 app.put('/api/admin/users/:id/role', async (c) => {
   try {
     if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
@@ -1013,6 +1350,258 @@ app.put('/api/notifications/:id/read', async (c) => {
     const userId = (c as any).user?.id;
     if (!userId) return c.json({ error: 'Not authenticated' }, 401);
     await db.markNotificationRead(parseInt(c.req.param('id')));
+    return c.json({ success: true });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+
+// ---------- Recharge / Deposit ----------
+// Receipt images are stored as base64 inside Postgres app_settings rows
+// (keyed per recharge id) since this deployment has no R2 bucket. Postgres
+// text columns comfortably hold multi-MB payloads.
+const RECEIPT_SETTING_PREFIX = 'recharge_receipt:';
+async function setReceiptStorage(id: number, base64: string, mime: string): Promise<void> {
+  await db.upsertSetting(`${RECEIPT_SETTING_PREFIX}${id}`, JSON.stringify({ b64: base64, mime }));
+}
+async function getReceiptStorage(id: number): Promise<{ b64: string; mime: string } | null> {
+  try {
+    const raw = await db.getSetting(`${RECEIPT_SETTING_PREFIX}${id}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return { b64: String(parsed?.b64 || ''), mime: String(parsed?.mime || 'image/png') };
+  } catch {
+    return null;
+  }
+}
+async function delReceiptStorage(id: number): Promise<void> {
+  try {
+    await db.deleteSetting(`${RECEIPT_SETTING_PREFIX}${id}`);
+  } catch {
+    // no-op
+  }
+}
+
+const VALID_PRESETS = [5, 50, 100, 300, 500, 1000];
+const MAX_RECEIPT_BYTES = 5 * 1024 * 1024;
+
+app.post('/api/recharges', async (c) => {
+  try {
+    const userId = (c as any).user?.id;
+    if (!userId) return c.json({ error: 'Not authenticated' }, 401);
+    const body = b(c);
+    const amount = parseFloat(body?.amount);
+    const method = String(body?.paymentMethod || '').toUpperCase();
+    const txRef = String(body?.txRef || '').trim();
+    const receiptBase64 = String(body?.receiptBase64 || '');
+    const receiptMime = String(body?.receiptMime || 'image/png');
+    if (!VALID_PRESETS.includes(amount) && amount < 5) {
+      return c.json({ error: 'Minimum deposit is $5' }, 400);
+    }
+    if (isNaN(amount) || amount <= 0 || amount > 50000) {
+      return c.json({ error: 'Invalid amount' }, 400);
+    }
+    if (!['TRX', 'BTC', 'USDT'].includes(method)) {
+      return c.json({ error: 'Invalid payment method' }, 400);
+    }
+    if (!receiptBase64 || receiptBase64.length > MAX_RECEIPT_BYTES) {
+      return c.json({ error: 'Receipt image missing or too large (max 5MB)' }, 400);
+    }
+    if (!receiptMime.startsWith('image/')) {
+      return c.json({ error: 'Receipt must be an image' }, 400);
+    }
+    // CF `recharges` schema: id, user_id, amount (numeric), coin (text, default TRX),
+    // receipt_url (text — base64 payload), status, reviewed_at, created_at
+    const recharge = await db.insert('recharges', {
+      user_id: userId,
+      amount,
+      coin: method,
+      receipt_url: `data:${receiptMime};base64,${receiptBase64}`,
+      status: 'pending',
+    });
+    return c.json({ recharge: toCamel(recharge || { id: (recharge as any)?.id }), message: 'Deposit submitted — admin will review your receipt' });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+
+// Convert any video pool URL (YouTube watch/shorts/youtu.be, TikTok) into an
+// iframe-embeddable URL so it renders inline in TaskDetail.
+function embeddableUrl(url: string): string {
+  const s = String(url || '').trim();
+  if (!s) return '';
+  // YouTube: watch?v= / shorts/ / youtu.be/
+  let m = s.match(/youtube\.com\/watch\?v=([\w-]+)/) ||
+    s.match(/youtube\.com\/shorts\/([\w-]+)/) ||
+    s.match(/youtu\.be\/([\w-]+)/);
+  if (m) return `https://www.youtube.com/embed/${m[1]}`;
+  // TikTok: extract numeric video id for the embed player
+  m = s.match(/tiktok\.com\/(@[^/]+\/video\/(\d+))/);
+  if (m) return `https://www.tiktok.com/player/v1/${m[2]}`;
+  // Unknown format: pass through (client falls back to an open-in-new-tab link)
+  return s;
+}
+
+app.get('/api/recharges/my', async (c) => {
+  try {
+    const userId = (c as any).user?.id;
+    if (!userId) return c.json({ error: 'Not authenticated' }, 401);
+    const rows = await db.select('recharges', { key: 'user_id', value: userId });
+    const sorted = [...rows].sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
+    return c.json({ recharges: toCamelList(sorted) });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+
+// ---------- Video pool: daily rotating watch-video URL (Round 11) ----------
+// Pool lives in app_settings.video_pool as a JSON array of YouTube/TikTok links.
+// Each user gets a different pick per day (deterministic hash of date + user id).
+app.get('/api/video-pool', async (c) => {
+  try {
+    let pool: string[] = [];
+    try {
+      const raw = await db.getSetting('video_pool');
+      if (raw) pool = JSON.parse(raw);
+    } catch { pool = []; }
+    if (!Array.isArray(pool) || pool.length === 0) {
+      return c.json({ videoUrl: '' });
+    }
+    const d = new Date();
+    const seedStr = `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}:${(c as any).user?.id || 'anon'}`;
+    let hash = 0;
+    for (let i = 0; i < seedStr.length; i++) hash = (hash * 31 + seedStr.charCodeAt(i)) | 0;
+    const rawUrl = pool[Math.abs(hash) % pool.length];
+    return c.json({ videoUrl: embeddableUrl(rawUrl) });
+  } catch {
+    return c.json({ videoUrl: '' });
+  }
+});
+
+// ---------- Admin: deposit review ----------
+app.get('/api/admin/recharges', async (c) => {
+  try {
+    if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
+    const rows = await db.select('recharges');
+    const sorted = [...rows].sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
+    const enriched: any[] = [];
+    for (const row of sorted) {
+      const users = await db.select('users', { key: 'id', value: row.user_id });
+      const user = users[0] || null;
+      const camel = toCamel(row);
+      // Map legacy/CF column names to the UI's expected field names
+      camel.paymentMethod = row.coin || camel.coin || null;
+      camel.txRef = null;
+      const rawReceipt = row.receipt_url || camel.receiptUrl || '';
+      camel.receiptUrl = String(rawReceipt).startsWith('data:') ? String(rawReceipt) : rawReceipt ? `data:image/png;base64,${rawReceipt}` : null;
+      camel.receiptMime = null;
+      camel.adminNote = row.admin_note || camel.adminNote || null;
+      enriched.push({
+        ...camel,
+        userName: user ? (user.username || user.full_name || user.email || `User #${user.id}`) : null,
+        userEmail: user?.email || null,
+      });
+    }
+    return c.json({ recharges: enriched });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+
+app.put('/api/admin/recharges/:id/decision', async (c) => {
+  try {
+    if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
+    const body = b(c);
+    const decision = String(body?.decision || '');
+    const note = String(body?.note || '').trim();
+    if (!['approved', 'rejected'].includes(decision)) {
+      return c.json({ error: 'Invalid decision (approved|rejected)' }, 400);
+    }
+    const rows = await db.select('recharges', { key: 'id', value: parseInt(c.req.param('id')) });
+    const recharge = rows[0];
+    if (!recharge) return c.json({ error: 'Not found' }, 404);
+    await db.updateById('recharges', recharge.id, {
+      status: decision,
+      reviewed_at: new Date().toISOString(),
+    });
+    if (decision === 'approved') {
+      const amount = parseFloat(recharge.amount || '0');
+      const userRows = await db.select('users', { key: 'id', value: recharge.user_id });
+      const user = userRows[0];
+      if (user) {
+        await db.updateById('users', user.id, {
+          deposit_amount: (parseFloat(user.deposit_amount || '0') + amount).toFixed(2),
+          has_recharged: true,
+        });
+      }
+      // VIP auto-activation: if the approved deposit amount matches a VIP plan,
+      // activate that VIP plan now (existing pending purchase becomes active;
+      // if none exists yet, a new active purchase is created automatically).
+      try {
+        let purchases = await getVipPurchases();
+        const plans = await getVipPlans();
+        const matchPlan = plans.find((p: any) => Number(p.depositAmount) === amount && p.status === 'active');
+        if (matchPlan) {
+          const existingActive = purchases.find((p: any) => Number(p.userId) === Number(recharge.user_id) && p.status === 'active');
+          if (!existingActive) {
+            const pending = purchases.find((p: any) => Number(p.userId) === Number(recharge.user_id) && p.status === 'pending' && Number(p.amount) === amount);
+            if (pending) {
+              pending.status = 'active';
+              pending.validFrom = new Date().toISOString();
+              pending.validUntil = new Date(Date.now() + Number(pending.validityDays) * 86400000).toISOString();
+            } else {
+              // No pending purchase — create the active VIP plan automatically
+              const nextId = purchases.length ? Math.max(...purchases.map((p: any) => Number(p.id || 0))) + 1 : 1;
+              purchases.push({
+                id: nextId,
+                userId: recharge.user_id,
+                planName: matchPlan.name,
+                planId: Number(matchPlan.id),
+                amount: amount,
+                dailyEarnRate: Number(matchPlan.dailyEarnRate),
+                taskAmount: Number(matchPlan.taskAmount),
+                maxDailyTasks: Number(matchPlan.maxDailyTasks),
+                validityDays: Number(matchPlan.validityDays),
+                status: 'active',
+                purchasedAt: new Date().toISOString(),
+                validFrom: new Date().toISOString(),
+                validUntil: new Date(Date.now() + Number(matchPlan.validityDays) * 86400000).toISOString(),
+              });
+            }
+            await saveVipPurchases(purchases);
+            try {
+              await db.insertNotification({
+                user_id: recharge.user_id,
+                title: 'VIP Task Activated',
+                body: `Your deposit of $${amount.toFixed(2)} activated ${matchPlan.name}. Your VIP tasks now pay directly to your wallet!`,
+                kind: 'info',
+              });
+            } catch { /* notifications table may not exist yet */ }
+          }
+        }
+      } catch { /* VIP activation is best-effort */ }
+      try {
+        await db.insertNotification({
+          user_id: recharge.user_id,
+          title: 'Deposit Approved',
+          body: `Your deposit of $${amount.toFixed(2)} (${recharge.coin || 'crypto'}) has been approved. Your tasks are now unlocked.`,
+          kind: 'info',
+        });
+      } catch { /* notifications table may not exist yet */ }
+    } else {
+      try {
+        await db.insertNotification({
+          user_id: recharge.user_id,
+          title: 'Deposit Not Approved',
+          body: note
+            ? `Your deposit receipt was not approved: ${note}. Please re-upload a valid receipt.`
+            : 'Your deposit receipt was not approved. Please re-upload a valid receipt.',
+          kind: 'info',
+        });
+      } catch { /* notifications table may not exist yet */ }
+    }
+    // Free storage for decided receipts
+    if (recharge.id) await delReceiptStorage(recharge.id);
     return c.json({ success: true });
   } catch {
     return c.json({ error: 'Internal error' }, 500);
