@@ -1,4 +1,4 @@
-import { supabase } from './db';
+import { getSupabase } from './db';
 
 /**
  * Startup table check for Supabase.
@@ -18,14 +18,14 @@ export async function runStartupCheck(): Promise<boolean> {
   }
 
   // Verify auth endpoint is reachable
-  const authRes = await supabase.auth.getUser('dummy');
+  const authRes = await getSupabase().auth.getUser('dummy');
   if (authRes.error && authRes.error.message.includes('Invalid JWT')) {
     console.log('✅ Supabase connection OK');
   }
 
   // Verify required tables exist
   for (const table of REQUIRED_TABLES) {
-    const result = await supabase.from(table).select('id', { count: 'exact', head: true });
+    const result = await getSupabase().from(table).select('id', { count: 'exact', head: true });
     if (result.error) {
       throw new Error(
         `Supabase schema check failed for table "${table}": ${result.error.message}. ` +
