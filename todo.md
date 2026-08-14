@@ -86,3 +86,17 @@
 - [x] Write SKILL.md: full workflow — Hono worker + Vite React, Supabase service-role backend, CF Pages direct upload WITH vars set on project, is-a.dev DNS PR, admin panel pattern, graceful notifications fallback, rate limiting patterns, Supabase dashboard browser DDL method
 - [x] references: deployment.md (wrangler vars gotcha, deploy script), is-a-dev.md (DNS PR steps), supabase-ddl.md (browser SQL editor method)
 - [x] quick_validate.py pass, deliver skill card to user
+
+## Round 14 (14 Aug) — VIP Task system + withdrawal PIN + free-task admin earnings + full user admin panel
+- [x] Withdrawal page: remove the 3 admin wallet display blocks (QR/copy)
+- [x] DB: vip_plans table (name, deposit amount, daily earn rate, task amount, max daily tasks, validity days, status active/not-yet) with $1000 package marked not-yet-active
+- [x] DB: vip_purchases table (user, plan, amount, valid_from, valid_until, days_remaining)
+- [x] Backend: GET/POST /api/vip-plans (purchase with valid deposit_amount), GET /api/vip-my (user's active plan + days remaining)
+- [x] Backend: VIP task completion pays based on active plan's rate; free task (30s video) earnings routed to admin account (not user wallet)
+- [x] DB: add admin_earnings tracking — free task earnings credited to admin's available_balance; VIP task earnings credited to user
+- [x] Withdrawal page: require withdraw PIN before submitting (PIN input in withdrawal flow, validated server-side); keep Change Password + Withdraw PIN in Personal Center
+- [x] Withdrawal: apply 5% fee automatically; payout processed within 10 minutes (auto-approve pending withdrawals with status note, admin can still review)
+- [x] Admin Panel: complete user profile view — number, email, country, register time, phone, tasks done, tasks approved, deposits, withdrawals, VIP plan, PIN set flag, full action set (add money, change role, view all)
+- [x] UI: VIP Task page in navigation (user) showing packages with Product Amount, Daily Earn, Validity; disabled/badge for $1000
+- [x] Rebuild + deploy (verified live: VIP activate + payout 1.20, free-task admin credit, PIN gate 403 wrong PIN, 5% fee, admin users enriched) to ai-computer-xplus-ai-fresh.pages.dev + verify live (register, VIP purchase, VIP task pay, free task -> admin earnings, withdrawal PIN, admin user detail)
+- [x] Push to GitHub + update JAGORAR guide (SASHE 21) guide (SASHE 21)
