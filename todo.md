@@ -100,3 +100,11 @@
 - [x] UI: VIP Task page in navigation (user) showing packages with Product Amount, Daily Earn, Validity; disabled/badge for $1000
 - [x] Rebuild + deploy (verified live: VIP activate + payout 1.20, free-task admin credit, PIN gate 403 wrong PIN, 5% fee, admin users enriched) to ai-computer-xplus-ai-fresh.pages.dev + verify live (register, VIP purchase, VIP task pay, free task -> admin earnings, withdrawal PIN, admin user detail)
 - [x] Push to GitHub + update JAGORAR guide (SASHE 21) guide (SASHE 21)
+
+## Round 15 (14 Aug) — Logo, Banner, Story da WhatsApp Channel Description
+- [ ] Ƙirƙiri logo na AI COMPUTER PLUS (hoton AI-generated)
+- [ ] Ƙirƙiri hero banner image na website (luxury modern)
+- [ ] Rubuta About Us story (investment + free tasks + VIP plan funding + online job task)
+- [ ] Rubuta WhatsApp channel description (short bio + cikakken description)
+- [ ] Hada logo/banner a live Cloudflare site (login page + About)
+- [ ] Deploy da gwada live
