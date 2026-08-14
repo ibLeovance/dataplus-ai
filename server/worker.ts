@@ -95,7 +95,9 @@ app.use('/api/withdrawals', financialRateLimit);
 app.use('/api/recharges', financialRateLimit);
 app.use('/api/auth/register', financialRateLimit);
 function financialRateLimit(c: any, next: any) {
-  const ip = c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'unknown';
+  // Security: never trust x-forwarded-for (spoofable). Cloudflare always sets cf-connecting-ip
+  // from the real edge connection, so harden IP pinning to that header only.
+  const ip = c.req.header('cf-connecting-ip') || 'unknown';
   const key = `fin:${ip}`;
   const now = Date.now();
   const WINDOW_MS = 15 * 60 * 1000;
@@ -228,10 +230,8 @@ app.get('/api/_echo-env', async (c) => {
 const rateBuckets = new Map<string, { count: number; until: number }>();
 function getClientIp(c: any): string {
   const cf = c.req?.raw?.cf?.colo ? '' : '';
-  const realIp =
-    c.req?.header('cf-connecting-ip') ||
-    c.req?.header('x-forwarded-for')?.split(',')[0]?.trim() ||
-    'unknown';
+  // Security: cf-connecting-ip only — x-forwarded-for is user-controlled and spoofable.
+  const realIp = c.req?.header('cf-connecting-ip') || 'unknown';
   return cf + realIp;
 }
 function isRateLimited(key: string, max: number, windowMs: number): boolean {
@@ -1048,11 +1048,11 @@ const isCloudflare = typeof globalThis !== 'undefined' && typeof (globalThis as 
     const assets = findAssets();
     if (assets?.fetch) {
       try {
-        const assetReq = new Request(targetUrl, { headers: c.req.headers });
+        const assetReq = new Request(targetUrl, { headers: (c.req.raw as Request).headers });
         const assetRes = await assets.fetch(assetReq);
         if (assetRes.status === 404) {
           // SPA fallback even for static paths missing in the pipeline
-          const idx = await assets.fetch(new Request(new URL("/index.html", c.req.url).toString(), { headers: c.req.headers }));
+          const idx = await assets.fetch(new Request(new URL("/index.html", c.req.url).toString(), { headers: (c.req.raw as Request).headers }));
           return idx;
         }
         return assetRes;
