@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "NODE_ENV=development tsx watch server/index.ts",
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist/server",
-    "build:worker": "vite build && esbuild server/worker.ts --bundle --platform=node --format=esm --outfile=client/dist/_worker.js --packages=external",
+    "build:worker": "vite build && esbuild server/worker.ts --bundle --platform=node --format=esm --outfile=client/dist/_worker.js",
     "build:full": "pnpm build && cp -r client/dist dist/client",
     "start": "NODE_ENV=production node dist/server/index.js",
     "db:push": "drizzle-kit push"
