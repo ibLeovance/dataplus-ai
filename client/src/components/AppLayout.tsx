@@ -17,6 +17,7 @@ import {
   Search,
   Coins,
   Wallet,
+  Headset,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,6 +29,7 @@ const navItems = [
   { icon: Award, label: "Milestone", path: "/dashboard" },
   { icon: TrendingUp, label: "Upline", path: "/dashboard" },
   { icon: PiggyBank, label: "Savings Jar", path: "/wallet" },
+  { icon: Headset, label: "Support Center", path: "/support" },
 ];
 
 function getGreeting(): string {
@@ -74,7 +76,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <span className="text-primary-foreground font-bold text-sm">AI</span>
         </div>
         {!sidebarCollapsed && (
-          <span className="font-bold text-base tracking-tight">AI COMPUTER PLUS</span>
+          <div className="flex flex-col">
+            <span className="font-bold text-base tracking-tight leading-tight">AI COMPUTER PLUS</span>
+            <div className="flex items-center gap-1 mt-0.5">
+              <span className="text-[10px] px-1.5 py-px rounded bg-primary/10 text-primary font-semibold">Member</span>
+            </div>
+          </div>
         )}
       </div>
 

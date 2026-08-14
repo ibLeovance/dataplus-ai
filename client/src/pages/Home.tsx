@@ -371,6 +371,43 @@ export default function Home() {
             </div>
           </section>
 
+          {/* Hot news (echoeffect-style column rows) */}
+          <section className="mb-8">
+            <h2 className="text-xl font-bold mb-4">Hot News</h2>
+            <Card className="border-border shadow-sm">
+              <CardContent className="p-0">
+                {/* Column headers */}
+                <div className="grid grid-cols-[48px_1fr_90px_90px_90px_90px] items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/40 text-[11px] font-semibold text-muted-foreground">
+                  <span className="text-center">#</span>
+                  <span>Article</span>
+                  <span className="text-center">Views</span>
+                  <span className="text-center">Likes</span>
+                  <span className="text-center">Favorites</span>
+                  <span className="text-center">Reward</span>
+                </div>
+                {/* Data rows */}
+                <div>
+                  {[
+                    { n: 1, title: "Watch a short video and earn TRX", views: "12,480", likes: "1,204", favs: "856", reward: "$0.05" },
+                    { n: 2, title: "Share your referral link on Telegram", views: "9,312", likes: "892", favs: "640", reward: "$0.10" },
+                    { n: 3, title: "Complete a quick partner survey", views: "7,845", likes: "741", favs: "523", reward: "$0.25" },
+                    { n: 4, title: "Follow the platform news channel", views: "5,621", likes: "632", favs: "412", reward: "$0.02" },
+                    { n: 5, title: "Download a partner app and keep it 24h", views: "4,209", likes: "503", favs: "358", reward: "$0.50" },
+                  ].map((row) => (
+                    <div key={row.n} className="grid grid-cols-[48px_1fr_90px_90px_90px_90px] items-center gap-2 px-4 py-3 border-b border-border/60 last:border-b-0 hover:bg-muted/30 transition-colors">
+                      <span className="text-center text-xs font-semibold text-primary">{row.n}</span>
+                      <span className="text-sm font-medium truncate">{row.title}</span>
+                      <span className="text-center text-xs text-muted-foreground">{row.views}</span>
+                      <span className="text-center text-xs text-muted-foreground">{row.likes}</span>
+                      <span className="text-center text-xs text-muted-foreground">{row.favs}</span>
+                      <span className="text-center text-xs font-semibold text-primary">{row.reward}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+
           {/* How it works / News */}
           <section id="how-it-works" className="mb-8">
             <h2 className="text-xl font-bold mb-4">How It Works</h2>

@@ -13,3 +13,11 @@
 - [x] Restore vars (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET, APP_DOMAIN) in wrangler.json after sandbox reset, redeploy to Cloudflare Pages, verify /api/withdrawals/admin-wallets + /recharge live
 - [ ] Set up ai-computer-xplus.is-a.dev custom domain on the Cloudflare Pages project
 - [ ] Verify live site on new domain; deliver admin instructions (login, add tasks, review withdrawals)
+
+## New user requests (14 Aug, round 2)
+- [ ] Create new CF Pages project "ai-computer-xplus-ai-fresh"
+- [ ] Update wrangler.json (name, APP_DOMAIN, worker define URL) to ai-computer-xplus-ai-fresh.pages.dev, drop dataplus-ai references
+- [ ] Improve UI to 100% match echoeffect.top structure (columns/rows, banner, search, stat cards)
+- [ ] Ensure Recharge page has all 3 wallets (TRX, BTC, USDT) with QR scan + Copy buttons
+- [ ] Deploy to ai-computer-xplus-ai-fresh.pages.dev and verify live
+- [ ] Update is-a.dev PR #47183 CNAME to ai-computer-xplus-ai-fresh.pages.dev
