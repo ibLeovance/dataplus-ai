@@ -1,26 +1,33 @@
 import { Router } from 'express';
-import { db } from '../db';
-import { tasks, taskCompletions, users } from '../../drizzle/schema';
-import { eq, sql } from 'drizzle-orm';
+import { db, toCamel, toCamelList } from '../db';
 
 export const router = Router();
 
 // Get all active tasks
 router.get('/', async (req, res) => {
   try {
-    const allTasks = await db.select().from(tasks).where(eq(tasks.status, 'active'));
-    res.json({ tasks: allTasks });
+    const allTasks = await db.select('tasks', { key: 'status', value: 'active' });
+    res.json({ tasks: toCamelList(allTasks) });
   } catch (err) {
     res.status(500).json({ error: 'Internal error' });
   }
 });
 
-// Get task by ID
-router.get('/:id', async (req, res) => {
+// Get user's completed tasks (BEFORE '/:id' so 'my-completions' is not treated as an id)
+router.get('/my-completions', async (req, res) => {
   try {
-    const [task] = await db.select().from(tasks).where(eq(tasks.id, parseInt(req.params.id)));
-    if (!task) return res.status(404).json({ error: 'Task not found' });
-    res.json({ task });
+    const userId = (req as any).user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const completions = await db.select('completions', { key: 'user_id', value: userId });
+    const withTitles = await Promise.all(
+      completions.map(async c => {
+        const taskRows = await db.select('tasks', { key: 'id', value: c.task_id });
+        const t = taskRows[0];
+        return { ...c, task_title: t?.title || null };
+      })
+    );
+    res.json({ completions: toCamelList(withTitles) });
   } catch (err) {
     res.status(500).json({ error: 'Internal error' });
   }
@@ -33,39 +40,36 @@ router.post('/complete', async (req, res) => {
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { taskId, proof } = req.body;
-    const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId));
+    const taskRows = await db.select('tasks', { key: 'id', value: taskId });
+    const task = taskRows[0];
     if (!task) return res.status(404).json({ error: 'Task not found' });
 
-    // Check if already completed
-    const existing = await db.select().from(taskCompletions).where(
-      sql`${taskCompletions.userId} = ${userId} AND ${taskCompletions.taskId} = ${taskId}`
-    );
-    if (existing.length > 0) {
+    const existing = await db.select('completions', { key: 'task_id', value: taskId });
+    const dup = existing.find(c => c.user_id === userId);
+    if (dup) {
       return res.status(409).json({ error: 'Task already completed' });
     }
 
-    const [completion] = await db.insert(taskCompletions).values({
-      userId,
-      taskId,
-      proof,
+    const completion = await db.insert('completions', {
+      user_id: userId,
+      task_id: taskId,
+      proof: proof || '',
       reward: task.reward,
       currency: task.currency,
-    }).returning();
-
-    res.json({ completion });
+    });
+    res.json({ completion: toCamel(completion) });
   } catch (err) {
     res.status(500).json({ error: 'Internal error' });
   }
 });
 
-// Get user's completed tasks
-router.get('/my-completions', async (req, res) => {
+// Get task by ID (keep AFTER /my-completions so 'my-completions' is not treated as an id)
+router.get('/:id', async (req, res) => {
   try {
-    const userId = (req as any).user?.id;
-    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
-
-    const completions = await db.select().from(taskCompletions).where(eq(taskCompletions.userId, userId));
-    res.json({ completions });
+    const rows = await db.select('tasks', { key: 'id', value: parseInt(req.params.id) });
+    const task = rows[0];
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    res.json({ task: toCamel(task) });
   } catch (err) {
     res.status(500).json({ error: 'Internal error' });
   }

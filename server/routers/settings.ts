@@ -1,7 +1,5 @@
 import { Router } from 'express';
-import { db } from '../db';
-import { settings, users, withdrawals } from '../../drizzle/schema';
-import { eq, sql } from 'drizzle-orm';
+import { db, toCamel } from '../db';
 
 export const router = Router();
 
@@ -12,45 +10,47 @@ router.post('/withdraw', async (req, res) => {
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { amount, currency, walletAddress } = req.body;
-    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    const rows = await db.select('users', { key: 'id', value: userId });
+    const user = rows[0];
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const minWithdraw = await db.select().from(settings).where(eq(settings.key, 'min_withdraw'));
-    const minAmount = minWithdraw[0]?.value || '1';
+    const minWithdraw = await db.getSetting('min_withdraw');
+    const minAmount = minWithdraw || '1';
     if (parseFloat(amount) < parseFloat(minAmount)) {
       return res.status(400).json({ error: `Minimum withdrawal is ${minAmount}` });
     }
 
-    if (parseFloat(user.availableBalance || "0") < parseFloat(amount)) {
+    if (parseFloat(user.available_balance || '0') < parseFloat(amount)) {
       return res.status(400).json({ error: 'Insufficient balance' });
     }
 
-    const [withdrawal] = await db.insert(withdrawals).values({
-      userId,
+    const withdrawal = await db.insert('withdrawals', {
+      user_id: userId,
       amount,
       currency,
-      walletAddress,
-    }).returning();
+      wallet_address: walletAddress,
+    });
 
     // Deduct from available balance
-    await db.update(users)
-      .set({ availableBalance: sql`${users.availableBalance} - ${amount}` })
-      .where(eq(users.id, userId));
+    await db.updateById('users', userId, {
+      available_balance: Number(user.available_balance || 0) - parseFloat(amount),
+    });
 
-    res.json({ withdrawal });
+    res.json({ withdrawal: toCamel(withdrawal) });
   } catch (err) {
     res.status(500).json({ error: 'Internal error' });
   }
 });
 
-// Get user's withdrawals
+// Get user's withdrawals (newest first)
 router.get('/my-withdrawals', async (req, res) => {
   try {
     const userId = (req as any).user?.id;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
-    const all = await db.select().from(withdrawals).where(eq(withdrawals.userId, userId));
-    res.json({ withdrawals: all });
+    const all = await db.select('withdrawals', { key: 'user_id', value: userId });
+    const sorted = [...all].sort((a, b) => (b.id || 0) - (a.id || 0));
+    res.json({ withdrawals: toCamelList(sorted) });
   } catch (err) {
     res.status(500).json({ error: 'Internal error' });
   }
@@ -59,20 +59,29 @@ router.get('/my-withdrawals', async (req, res) => {
 // Get admin wallet addresses (for QR display)
 router.get('/admin-wallets', async (req, res) => {
   try {
-    const btcSetting = await db.select().from(settings).where(eq(settings.key, 'btc_wallet'));
-    const trxSetting = await db.select().from(settings).where(eq(settings.key, 'trx_wallet'));
-    const bscSetting = await db.select().from(settings).where(eq(settings.key, 'bsc_wallet'));
-    const bnbSetting = await db.select().from(settings).where(eq(settings.key, 'bnb_wallet'));
+    const btc = await db.getSetting('btc_wallet');
+    const trx = await db.getSetting('trx_wallet');
+    const bsc = await db.getSetting('bsc_wallet');
+    const bnb = await db.getSetting('bnb_wallet');
 
     res.json({
-      btc: btcSetting[0]?.value || 'bc1qae7mq6hmzf7xnq360emehgcthmpyjq0jtj3fct',
-      trx: trxSetting[0]?.value || 'TKF8qKRjB7XGmwL5fRse1bbgxElWWZisHy4',
-      usdt: bscSetting[0]?.value || '0x5ECb8F07bb486c1d630e393849e7d5D4aD2608b8',
-      bnb: bnbSetting[0]?.value || '0x5ECb8F07bb486c1d630e393849e7d5D4aD2608b8',
+      btc: btc || 'bc1qae7mq6hmzf7xnq360emehgcthmpyjq0jtj3fct',
+      trx: trx || 'TKF8qKRjB7XGmwL5fRse1bbgxElWWZisHy4',
+      usdt: bsc || '0x5ECb8F07bb486c1d630e393849e7d5D4aD2608b8',
+      bnb: bnb || '0x5ECb8F07bb486c1d630e393849e7d5D4aD2608b8',
     });
   } catch (err) {
     res.status(500).json({ error: 'Internal error' });
   }
 });
 
-
+/** camelCase a list of rows */
+function toCamelList(rows: Record<string, any>[]) {
+  return rows.map(r => {
+    const out: Record<string, any> = {};
+    for (const key of Object.keys(r)) {
+      out[key.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase())] = r[key];
+    }
+    return out;
+  });
+}

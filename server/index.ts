@@ -11,6 +11,7 @@ import { router as referralRouter } from './routers/referral';
 import { router as adminRouter } from './routers/admin';
 import { router as settingsRouter } from './routers/settings';
 import { router as shareRouter } from './routers/share';
+import { runStartupCheck } from './migrate';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -73,8 +74,19 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`   Database: ${process.env.DATABASE_URL ? 'Connected' : 'Not configured'}`);
-});
+async function startServer() {
+  try {
+    await runStartupCheck();
+  } catch (err) {
+    console.error('❌ Startup schema check failed:', (err as Error).message);
+    process.exit(1);
+  }
+
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`   Database: Supabase (${process.env.SUPABASE_URL || 'not configured'})`);
+  });
+}
+
+startServer();
