@@ -435,7 +435,7 @@ function SelfTopUpDialog() {
 
       {/* Tabs */}
       <Tabs defaultValue="tasks">
-        <TabsList className="bg-card mb-4">
+        <TabsList className="bg-card mb-4 overflow-x-auto flex-nowrap justify-start w-auto h-auto py-1.5 [&>button]:whitespace-nowrap [&>button]:text-xs [&>button]:px-2.5 [&>button]:py-1">
           <TabsTrigger value="tasks" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Tasks</TabsTrigger>
           <TabsTrigger value="completions" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Reviews</TabsTrigger>
           <TabsTrigger value="withdrawals" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Withdrawals</TabsTrigger>
