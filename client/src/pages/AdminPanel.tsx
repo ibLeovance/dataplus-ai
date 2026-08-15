@@ -689,7 +689,10 @@ function AdminContent() {
 
         {/* Settings Tab */}
         <TabsContent value="settings">
-          <AdminSettings />
+          <div className="space-y-4">
+            <AdminSettings />
+            <AdChannelsEditor />
+          </div>
         </TabsContent>
       </Tabs>
 
@@ -972,6 +975,105 @@ function EditTaskDialog({ task, onClose }: { task: any; onClose: () => void }) {
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function AdChannelsEditor() {
+  const { token } = useAuth();
+  const [channels, setChannels] = useState<any[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/ad-payment-channels")
+      .then((r) => r.json())
+      .then((d) => { setChannels(d.channels || []); setLoaded(true); })
+      .catch(() => setLoaded(true));
+  }, []);
+
+  const setField = (id: string, field: "accountRef" | "enabled", value: any) => {
+    setChannels((prev) => prev.map((ch) => (ch.id === id ? { ...ch, [field]: value } : ch)));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/ad-payment-channels", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ channels: channels.map((c) => ({ id: c.id, accountRef: c.accountRef, enabled: c.enabled })) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save ad-network channels");
+      setChannels(data.channels || channels);
+      toast.success("Ad-network payment channels saved! Enabled channels now appear for users on the Withdraw page.");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!loaded) {
+    return (
+      <Card className="bg-card">
+        <CardContent className="flex justify-center py-6">
+          <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="bg-card">
+      <CardHeader className="py-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <MonitorPlay className="w-5 h-5 text-primary" />
+          Ad-Network Payment Channels
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Unlimited admin control of payout channels: set each channel's account details, enable or disable it, and verify payouts through it. These channels are internal to the admin only — they never appear to users on the website; users withdraw through the crypto wallets, and you confirm the funds arrive at the channel account/exchanger.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-lg border border-border divide-y divide-border/50">
+          {channels.map((ch) => (
+            <div key={ch.id} className="p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold">{ch.label}</p>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={!!ch.enabled}
+                    onChange={(e) => setField(ch.id, "enabled", e.target.checked)}
+                    className="w-4 h-4 accent-primary"
+                  />
+                  Enabled
+                </label>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Account ID / Payout Details (e.g. publisher email, site ID)</Label>
+                <Input
+                  value={ch.accountRef || ""}
+                  onChange={(e) => setField(ch.id, "accountRef", e.target.value)}
+                  placeholder={`Enter your ${ch.label} account / publisher reference`}
+                  className="bg-secondary/50 border-border/50 font-mono text-sm"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        <Button onClick={handleSave} disabled={saving} className="bg-gradient-to-r bg-primary text-primary-foreground font-semibold hover:opacity-90">
+          {saving ? (
+            <div className="animate-spin w-5 h-5 border-2 border-current border-t-transparent rounded-full mr-2" />
+          ) : null}
+          Save Ad-Network Channels
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 
