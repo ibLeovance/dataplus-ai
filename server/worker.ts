@@ -472,6 +472,31 @@ app.get('/api/tasks', async (c) => {
   }
 });
 
+// Daily VIP task progress: how many paid daily tasks the user has completed today vs their plan limit
+app.get('/api/tasks/daily-task', async (c) => {
+  try {
+    const userId = (c as any).user?.id;
+    if (!userId) return c.json({ error: 'Not authenticated' }, 401);
+    const vip = await getActiveVip(userId);
+    if (!vip) return c.json({ vip: null, completedToday: 0, limit: 0, rewardEach: 0 });
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const completions = await db.select('completions', { key: 'user_id', value: userId });
+    const completedToday = completions.filter((comp: any) => {
+      const t = new Date(comp.reviewed_at || comp.submitted_at).getTime();
+      return t >= todayStart.getTime() && (comp.status || 'pending') === 'approved';
+    }).length;
+    return c.json({
+      vip: { planName: vip.name, maxDailyTasks: vip.maxDailyTasks, taskAmount: vip.taskAmount, daysLeft: Math.max(0, Math.ceil((new Date(vip.validUntil).getTime() - Date.now()) / 86400000)) },
+      completedToday,
+      limit: vip.maxDailyTasks || 0,
+      rewardEach: Number(vip.taskAmount || 0),
+    });
+  } catch {
+    return c.json({ vip: null, completedToday: 0, limit: 0, rewardEach: 0 });
+  }
+});
+
 app.get('/api/tasks/my-completions', async (c) => {
   try {
     const userId = (c as any).user?.id;
@@ -745,7 +770,9 @@ app.get('/api/withdrawals/my-withdrawals', async (c) => {
     const userId = (c as any).user?.id;
     if (!userId) return c.json({ error: 'Not authenticated' }, 401);
     const all = await db.select('withdrawals', { key: 'user_id', value: userId });
-    const sorted = [...all].sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
+    const sorted = [...all]
+      .map((r: any) => ({ ...r, created_at: r.created_at ?? r.requested_at ?? null }))
+      .sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
     return c.json({ withdrawals: toCamelList(sorted) });
   } catch {
     return c.json({ error: 'Internal error' }, 500);
@@ -756,7 +783,9 @@ app.get('/api/withdrawals/my', async (c) => {
     const userId = (c as any).user?.id;
     if (!userId) return c.json({ error: 'Not authenticated' }, 401);
     const all = await db.select('withdrawals', { key: 'user_id', value: userId });
-    const sorted = [...all].sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
+    const sorted = [...all]
+      .map((r: any) => ({ ...r, created_at: r.created_at ?? r.requested_at ?? null }))
+      .sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
     return c.json({ withdrawals: toCamelList(sorted) });
   })();
 });
