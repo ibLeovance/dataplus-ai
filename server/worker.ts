@@ -152,7 +152,8 @@ app.use('/api/share/links', exempt);
 app.use('/api/withdrawals/admin-wallets', exempt);
 app.use('/api/vip-plans', exempt);
 app.use('/api/marketplace-stats', exempt);
-const PUBLIC_API_PATHS = ['/api/health', '/api/share/links', '/api/withdrawals/admin-wallets', '/api/marketplace-stats', '/api/vip-plans'];
+app.use('/api/ad-payment-channels', exempt);
+const PUBLIC_API_PATHS = ['/api/health', '/api/share/links', '/api/withdrawals/admin-wallets', '/api/marketplace-stats', '/api/vip-plans', '/api/ad-payment-channels'];
 
 app.use('/api/*', async (c, next) => {
   // Public endpoints skip authentication; /api/auth/* paths are handled by the auth middleware above
@@ -683,8 +684,14 @@ app.post('/api/withdrawals/withdraw', async (c) => {
     const userId = (c as any).user?.id;
     if (!userId) return c.json({ error: 'Not authenticated' }, 401);
     const body = b(c);
-    const { amount, walletAddress, pin } = body;
-    const currency = 'TRX'; // single-currency payout (TRX); wallets removed from UI per Round 14
+    const { amount, walletAddress, pin, paymentMethod, payoutAccountRef } = body;
+    // paymentMethod: crypto ('BTC' | 'USDT' | 'TRX') or an ad-network channel id (adsterra, monetag, ...)
+    const isCrypto = !paymentMethod || ['BTC', 'USDT', 'TRX'].includes(String(paymentMethod));
+    const currency = isCrypto ? (String(paymentMethod) || 'TRX') : String(paymentMethod);
+    const addr = isCrypto ? walletAddress : (payoutAccountRef || walletAddress);
+    if (!isCrypto && !String(addr || '').trim()) {
+      return c.json({ error: 'Please enter your ad-network account ID or publisher email.' }, 400);
+    }
     const rows = await db.select('users', { key: 'id', value: userId });
     const user = rows[0];
     if (!user) return c.json({ error: 'User not found' }, 404);
@@ -714,7 +721,7 @@ app.post('/api/withdrawals/withdraw', async (c) => {
       user_id: userId,
       amount,
       currency,
-      wallet_address: walletAddress,
+      wallet_address: addr,
       fee,
       status: 'processing',
     });
@@ -1151,6 +1158,59 @@ app.put('/api/admin/settings', async (c) => {
       await db.upsertSetting('video_pool', JSON.stringify(arr));
     }
     return c.json({ success: true });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+
+// ---------- Ad-network payment channels ----------
+const DEFAULT_AD_CHANNELS = [
+  { id: 'adsterra', name: 'Adsterra', label: 'Adsterra', accountRef: '', enabled: false },
+  { id: 'monetag', name: 'Monetag', label: 'Monetag', accountRef: '', enabled: false },
+  { id: 'propellerads', name: 'PropellerAds', label: 'PropellerAds', accountRef: '', enabled: false },
+  { id: 'adsense', name: 'Google AdSense', label: 'Google AdSense', accountRef: '', enabled: false },
+  { id: 'medianet', name: 'Media.net', label: 'Media.net', accountRef: '', enabled: false },
+  { id: 'admob', name: 'AdMob', label: 'AdMob', accountRef: '', enabled: false },
+];
+async function getAdChannels(): Promise<any[]> {
+  try {
+    const raw = await db.getSetting('ad_payment_channels');
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr) || arr.length === 0) throw new Error('empty');
+    return DEFAULT_AD_CHANNELS.map((d) => {
+      const found = arr.find((x: any) => x && x.id === d.id);
+      return { ...d, ...(found || {}) };
+    });
+  } catch {
+    await db.upsertSetting('ad_payment_channels', JSON.stringify(DEFAULT_AD_CHANNELS));
+    return DEFAULT_AD_CHANNELS;
+  }
+}
+app.get('/api/ad-payment-channels', async (c) => {
+  try {
+    const channels = await getAdChannels();
+    return c.json({ channels });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+app.put('/api/admin/ad-payment-channels', async (c) => {
+  try {
+    if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
+    const body = b(c);
+    const incoming = Array.isArray(body?.channels) ? body.channels : body;
+    const channels = await getAdChannels();
+    const next = channels.map((d) => {
+      const upd = incoming.find((x: any) => x && x.id === d.id);
+      if (!upd) return d;
+      return {
+        ...d,
+        accountRef: String(upd.accountRef ?? d.accountRef).trim(),
+        enabled: Boolean(upd.enabled ?? d.enabled),
+      };
+    });
+    await db.upsertSetting('ad_payment_channels', JSON.stringify(next));
+    return c.json({ success: true, channels: next });
   } catch {
     return c.json({ error: 'Internal error' }, 500);
   }
