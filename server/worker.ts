@@ -858,13 +858,23 @@ app.post('/api/vip-plans/:id/purchase', async (c) => {
     if (plan.status === 'not_yet_active') {
       return c.json({ error: 'This VIP tier is not yet active' }, 400);
     }
-    const existing = await getActiveVip(userId);
-    if (existing) return c.json({ error: 'You already have an active VIP plan' }, 400);
     const purchases = await getVipPurchases();
-    // Remove any previously expired/pending plans for this user
-    const active = await getActiveVip(userId).then(() => null); // already checked above
+    // Repurchase rules (Round 22): any plan may be purchased up to 2 times per user
+    // (lifetime, active or expired records both count). $1000 (VIP Elite) stays
+    // not-yet-active. If the user has an ACTIVE purchase of the SAME plan, the new
+    // intent EXTENDS that plan's validity by its validityDays instead of stacking.
+    const samePlan = purchases.filter((p: any) => Number(p.userId) === Number(userId) && p.planName === plan.name && p.status !== 'cancelled');
+    if (samePlan.length >= 2) {
+      return c.json({ error: `Purchase limit reached — ${plan.name} may only be purchased twice (2x) per account.` }, 400);
+    }
+    const samePlanActive = samePlan.find((p: any) => p.status === 'active' && p.validUntil && new Date(p.validUntil).getTime() > Date.now());
     const pending = purchases.find((p: any) => Number(p.userId) === Number(userId) && p.status === 'pending');
     if (pending) pending.status = 'cancelled';
+    if (samePlanActive) {
+      samePlanActive.validUntil = new Date(Date.now() + Number(plan.validityDays) * 86400000).toISOString();
+      await saveVipPurchases(purchases);
+      return c.json({ success: true, plan, message: `Your ${plan.name} VIP validity has been extended by ${plan.validityDays} days. Recharge the plan amount and submit your receipt to confirm.` });
+    }
     purchases.push({
       id: purchases.length ? Math.max(...purchases.map((p: any) => Number(p.id || 0))) + 1 : 1,
       userId,
@@ -1313,6 +1323,26 @@ app.put('/api/admin/users/:id', async (c) => {
   }
 });
 
+// ---------- Admin self top-up (Round 22) — admin adds any amount to his OWN balance ----------
+app.post('/api/admin/self-topup', async (c) => {
+  try {
+    if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
+    const userId = (c as any).user.id;
+    const body = b(c);
+    const amount = parseFloat(body?.amount);
+    if (isNaN(amount) || amount <= 0 || amount > 10000000) {
+      return c.json({ error: 'Invalid amount (must be > 0)' }, 400);
+    }
+    const rows = await db.select('users', { key: 'id', value: userId });
+    const user = rows[0];
+    if (!user) return c.json({ error: 'User not found' }, 404);
+    const newBalance = (parseFloat(user.available_balance || '0') + amount).toFixed(4);
+    await db.updateById('users', user.id, { available_balance: newBalance });
+    return c.json({ success: true, newBalance: parseFloat(newBalance) });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
 // ---------- Admin unlimited top-up ----------
 app.post('/api/admin/users/:id/topup', async (c) => {
   try {
@@ -1606,7 +1636,7 @@ app.put('/api/admin/recharges/:id/decision', async (c) => {
         const plans = await getVipPlans();
         const matchPlan = plans.find((p: any) => Number(p.depositAmount) === amount && p.status === 'active');
         if (matchPlan) {
-          const existingActive = purchases.find((p: any) => Number(p.userId) === Number(recharge.user_id) && p.status === 'active');
+          const existingActive = purchases.find((p: any) => Number(p.userId) === Number(recharge.user_id) && p.status === 'active' && p.planName === matchPlan.name);
           if (!existingActive) {
             const pending = purchases.find((p: any) => Number(p.userId) === Number(recharge.user_id) && p.status === 'pending' && Number(p.amount) === amount);
             if (pending) {
