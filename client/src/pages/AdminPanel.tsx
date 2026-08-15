@@ -332,9 +332,73 @@ function AdminContent() {
     } catch {}
   };
 
+/* Round 22 — admin self top-up: add any amount directly to the admin's own dashboard balance (unlimited) */
+function SelfTopUpDialog() {
+  const { token } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+  const doSelfTopUp = async (amt: number) => {
+    if (!amt || amt <= 0) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/self-topup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ amount: amt }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Top-up failed");
+      toast.success(`Added $${amt.toFixed(2)} to your balance. New balance: $${Number(d.newBalance).toFixed(4)}`);
+      setAmount("");
+      setOpen(false);
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90 h-8 text-xs gap-1.5">
+          <CircleDollarSign className="w-4 h-4" /> Self Top-Up (Unlimited)
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[380px]">
+        <DialogHeader>
+          <DialogTitle className="text-base">Add Money to Your Admin Balance</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 pt-1">
+          <p className="text-xs text-muted-foreground">Funds go directly to your dashboard balance — usable for VIP purchases, withdrawals, etc. No limit.</p>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => void doSelfTopUp(100)} className="flex-1 h-8 text-xs border-primary/20 text-primary hover:bg-primary/10">+ $100</Button>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => void doSelfTopUp(500)} className="flex-1 h-8 text-xs border-primary/20 text-primary hover:bg-primary/10">+ $500</Button>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => void doSelfTopUp(1000)} className="flex-1 h-8 text-xs border-primary/20 text-primary hover:bg-primary/10">+ $1000</Button>
+          </div>
+          <div className="flex gap-2 items-center">
+            <div className="relative flex-1">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+              <Input type="number" step="0.01" min="0.01" placeholder="Custom amount" value={amount} onChange={(e) => setAmount(e.target.value)} className="pl-6 h-9" />
+            </div>
+            <Button disabled={busy} onClick={() => {
+              const amt = parseFloat(amount);
+              if (isNaN(amt) || amt <= 0) { toast.error("Enter a valid amount"); return; }
+              void doSelfTopUp(amt);
+            }} className="h-9 shrink-0">Add</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
   return (
     <div className="pt-4 pb-8 px-2 lg:px-4">
-      <h1 className="text-2xl font-sans font-bold mb-1">Admin Panel</h1>
+      <div className="flex items-center justify-between gap-3 mb-1">
+        <h1 className="text-2xl font-sans font-bold">Admin Panel</h1>
+        <SelfTopUpDialog />
+      </div>
       <p className="text-muted-foreground text-sm mb-6">Manage tasks, reviews, and payouts.</p>
 
       {/* Stats */}
