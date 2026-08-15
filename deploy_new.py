@@ -15,8 +15,7 @@ API = f"https://api.cloudflare.com/client/v4/accounts/{ACCT}"
 
 def cf_api(method, path, payload=None):
     req = urllib.request.Request(f"{API}{path}", method=method, data=json.dumps(payload).encode() if payload else None)
-    req.add_header("X-Auth-Email", EMAIL)
-    req.add_header("X-Auth-Key", TOKEN)
+    req.add_header("Authorization", f"Bearer {TOKEN}")
     if payload:
         req.add_header("Content-Type", "application/json")
     with urllib.request.urlopen(req, timeout=60) as resp:
