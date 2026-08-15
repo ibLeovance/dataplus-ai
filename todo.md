@@ -118,3 +118,15 @@
 - [x] Admin UI: unlimited top-up button in user detail dialog (preset $10 free / $50 VIP + custom amount), approve/reject pending deposits, edit everything
 - [x] Admin dashboard tab to see approved payments and pending payments counts
 - [x] Redeploy to Cloudflare Pages + verify live + push GitHub + update guide
+
+## Round 18 (15 Aug) — VIP purchase + withdrawal end-to-end live test
+- [x] Top up admin balance so VIP purchase ($50-$1000) is affordable
+- [x] Set withdrawal PIN for admin account so withdrawal gate passes
+- [x] Test VIP purchase flow via API (vip-plans list, purchase, balance deduction)
+- [x] Test withdrawal request via API (min amount, PIN verification, 5% fee)
+- [x] Verify withdrawal status + admin approval flow, report results
+
+## Round 19 (15 Aug) — Approve pending $15 withdrawals
+- [x] Approve withdrawal id 12 ($15) to paid status via DB
+- [x] Approve withdrawal id 13 ($15) to paid status via DB
+- [x] Verify final state and report to user
