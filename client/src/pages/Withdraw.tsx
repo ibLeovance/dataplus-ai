@@ -197,7 +197,7 @@ export default function Withdraw() {
             </div>
 
             <div className="space-y-2">
-              <Label>Cryptocurrency</Label>
+              <Label>Payout Method</Label>
               <Select value={walletType} onValueChange={setWalletType}>
                 <SelectTrigger className="bg-secondary/50 border-border">
                   <SelectValue />
