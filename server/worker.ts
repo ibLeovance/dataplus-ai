@@ -443,8 +443,14 @@ app.get('/api/auth/overview', async (c) => {
     const user = rows[0];
     if (!user) return c.json({ error: 'User not found' }, 404);
     const completions = await db.select('completions', { key: 'user_id', value: userId });
-    const completedCount = completions.filter((comp: any) => comp.status === 'approved').length;
-    const pendingCount = completions.filter((comp: any) => comp.status === 'pending').length;
+    const approved = completions.filter((comp: any) => comp.status === 'approved');
+    const pending = completions.filter((comp: any) => comp.status === 'pending');
+    const completedCount = approved.length;
+    const pendingCount = pending.length;
+    const completedFree = approved.filter((comp: any) => comp.funding === 'admin').length;
+    const completedVip = approved.filter((comp: any) => comp.funding === 'user').length;
+    const pendingFree = pending.filter((comp: any) => comp.funding === 'admin').length;
+    const pendingVip = pending.filter((comp: any) => comp.funding === 'user').length;
     const { password_hash: _, ...safeUser } = user as any;
     return c.json({
       user: toCamel(safeUser),
@@ -453,7 +459,11 @@ app.get('/api/auth/overview', async (c) => {
         availableBalance: user.available_balance,
         referralBonus: user.referral_bonus,
         completedTasks: completedCount,
+        completedFreeTasks: completedFree,
+        completedVipTasks: completedVip,
         pendingTasks: pendingCount,
+        pendingFreeTasks: pendingFree,
+        pendingVipTasks: pendingVip,
         referralCode: user.referral_code,
       },
     });
@@ -472,28 +482,60 @@ app.get('/api/tasks', async (c) => {
   }
 });
 
-// Daily VIP task progress: how many paid daily tasks the user has completed today vs their plan limit
+// Daily VIP task progress + ordered daily queue: approved VIP tasks today, plus the ordered list of remaining task ids to complete in sequence
 app.get('/api/tasks/daily-task', async (c) => {
   try {
     const userId = (c as any).user?.id;
     if (!userId) return c.json({ error: 'Not authenticated' }, 401);
     const vip = await getActiveVip(userId);
-    if (!vip) return c.json({ vip: null, completedToday: 0, limit: 0, rewardEach: 0 });
+    const allTasks = await db.select('tasks', { key: 'status', value: 'active' });
+    const videoTasks = (allTasks || [])
+      .filter((t: any) => t.category === 'video' || t.category === 'watch_video')
+      .sort((a: any, b: any) => Number(a.id) - Number(b.id));
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
+    const todayKey = todayStart.toISOString().slice(0, 10);
     const completions = await db.select('completions', { key: 'user_id', value: userId });
-    const completedToday = completions.filter((comp: any) => {
-      const t = new Date(comp.reviewed_at || comp.submitted_at).getTime();
+    const todayApproved = completions.filter((comp: any) => {
+      const t = new Date(comp.reviewed_at || comp.submitted_at || comp.created_at).getTime();
       return t >= todayStart.getTime() && (comp.status || 'pending') === 'approved';
-    }).length;
+    });
+    const completedToday = todayApproved.length;
+    if (!vip) {
+      return c.json({
+        vip: null,
+        completedToday: 0,
+        limit: 0,
+        rewardEach: 0,
+        doneTaskIds: todayApproved.map((comp: any) => Number(comp.task_id)),
+        queue: videoTasks.map((t: any) => Number(t.id)),
+        purchaseAmount: 0,
+        maxDailyEarn: 0,
+        totalPlanTasks: videoTasks.length,
+      });
+    }
+    const limit = Math.min(Number(vip.maxDailyTasks || 0), videoTasks.length);
+    const doneTaskIds = todayApproved
+      .map((comp: any) => Number(comp.task_id))
+      .filter((id: number) => videoTasks.some((t: any) => Number(t.id) === id));
+    // Ordered queue: video tasks in id order; skip ones already approved today
+    const queue = videoTasks
+      .map((t: any) => Number(t.id))
+      .filter((id: number) => !doneTaskIds.includes(id))
+      .slice(0, Math.max(0, limit - doneTaskIds.length));
     return c.json({
       vip: { planName: vip.name, maxDailyTasks: vip.maxDailyTasks, taskAmount: vip.taskAmount, daysLeft: Math.max(0, Math.ceil((new Date(vip.validUntil).getTime() - Date.now()) / 86400000)) },
       completedToday,
-      limit: vip.maxDailyTasks || 0,
+      limit,
       rewardEach: Number(vip.taskAmount || 0),
+      doneTaskIds,
+      queue,
+      purchaseAmount: Number(vip.depositAmount || 0),
+      maxDailyEarn: Number((vip.maxDailyTasks || 0) * (vip.taskAmount || 0)),
+      totalPlanTasks: videoTasks.length,
     });
   } catch {
-    return c.json({ vip: null, completedToday: 0, limit: 0, rewardEach: 0 });
+    return c.json({ vip: null, completedToday: 0, limit: 0, rewardEach: 0, doneTaskIds: [], queue: [], purchaseAmount: 0, maxDailyEarn: 0, totalPlanTasks: 0 });
   }
 });
 
@@ -552,11 +594,10 @@ app.post('/api/tasks/complete', async (c) => {
       currency: task.currency,
       video_watched_seconds: watchedSec,
       funding: funding,
-      status: funding === 'admin' ? 'admin_credited' : 'approved',
+      status: 'pending', // ALL tasks (free and VIP) go through admin review; reward credited on approval
     }).catch(async (e: any) => {
       if (String(e.message || '').includes('funding') || String(e.message || '').includes('column')) {
         // The 'funding' column does not exist in this environment yet.
-        // Retry without it; funding is still applied to balances immediately.
         return db.insert('completions', {
           user_id: userId,
           task_id: taskId,
@@ -564,43 +605,21 @@ app.post('/api/tasks/complete', async (c) => {
           reward: rewardAmount,
           currency: task.currency,
           video_watched_seconds: watchedSec,
-          status: funding === 'admin' ? 'admin_credited' : 'approved',
+          status: 'pending',
         });
       }
       throw e;
     });
     if (funding === 'user' && vip) {
-      // Pay the VIP task reward to the user immediately
+      // VIP task rewards are credited to the user when admin approves the submission.
       try {
-        const userRows = await db.select('users', { key: 'id', value: userId });
-        const user = userRows[0];
-        if (user) {
-          await db.updateById('users', userId, {
-            total_earned: Number(user.total_earned || 0) + rewardAmount,
-            available_balance: Number(user.available_balance || 0) + rewardAmount,
-          });
-          try {
-            await db.insertNotification({
-              user_id: userId,
-              title: 'VIP Task Paid',
-              body: `Your VIP task paid $${rewardAmount.toFixed(2)} directly to your wallet (${vip.name}).`,
-              kind: 'info',
-            });
-          } catch { /* notifications table may not exist */ }
-        }
-      } catch { /* payment failure should not block completion recording */ }
-    } else {
-      // Free task: credit the platform admin account
-      try {
-        const admins = await db.select('users', { key: 'role', value: 'admin' });
-        if (admins.length > 0) {
-          const admin = admins[0];
-          await db.updateById('users', admin.id, {
-            total_earned: Number(admin.total_earned || 0) + rewardAmount,
-            available_balance: Number(admin.available_balance || 0) + rewardAmount,
-          });
-        }
-      } catch { /* admin credit failure should not block completion recording */ }
+        await db.insertNotification({
+          user_id: userId,
+          title: 'VIP Task Submitted',
+          body: `Your VIP task ($${rewardAmount.toFixed(2)} — ${vip.name}) is in pending review. Once approved, it pays directly to your wallet.`,
+          kind: 'info',
+        });
+      } catch { /* notifications table may not exist */ }
     }
     return c.json({ completion: toCamel(completion), funding });
   } catch {
