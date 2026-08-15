@@ -17,6 +17,7 @@ import {
   Zap,
   CheckCircle2,
   Clock,
+  Wallet,
 } from "lucide-react";
 
 const PLAN_TIERS: Record<string, { accent: string; chip: string }> = {
@@ -40,6 +41,9 @@ export default function VipTask() {
   const [myVip, setMyVip] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<number | null>(null);
+  const [balance, setBalance] = useState(0);
+  const [dailyDone, setDailyDone] = useState(0);
+  const [dailyMax, setDailyMax] = useState(0);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -53,17 +57,40 @@ export default function VipTask() {
     Promise.all([
       fetch("/api/vip-plans", { headers }).then((r) => r.json()),
       fetch("/api/vip-my", { headers }).then((r) => (r.ok ? r.json() : Promise.resolve({ vip: null }))),
+      fetch("/api/auth/overview", { headers }).then((r) => (r.ok ? r.json() : Promise.resolve({ overview: null }))),
+      fetch("/api/tasks/my-completions", { headers }).then((r) => (r.ok ? r.json() : Promise.resolve({ completions: [] }))),
     ])
-      .then(([plansData, vipData]) => {
+      .then(([plansData, vipData, ovData, compData]) => {
         setPlans(plansData.plans || []);
         setMyVip(vipData.vip || null);
+        setBalance(Number(ovData.overview?.availableBalance || 0));
+        const today = new Date().toISOString().slice(0, 10);
+        const done = (compData.completions || []).filter(
+          (c: any) => (c.completedAt || c.completed_at || "").toString().startsWith(today)
+        ).length;
+        const active = (plansData.plans || []).find(
+          (p: any) => vipData.vip?.planName === p.name && p.status === "active"
+        );
+        setDailyDone(done);
+        setDailyMax(active ? Number(active.maxDailyTasks || 0) : 0);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [user, token]);
 
   const handlePurchase = async (plan: any) => {
-    if (!window.confirm(`Purchase VIP ${plan.name} for $${Number(plan.depositAmount).toFixed(2)}? This matches the recharge amount you select.`)) return;
+    const amount = Number(plan.depositAmount || 0);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("This plan is not available right now.");
+      return;
+    }
+    if (balance < amount) {
+      toast.error(`Insufficient balance — you have $${balance.toFixed(2)} but this plan requires $${amount.toFixed(2)}. Please recharge first.`);
+      const goRecharge = window.confirm("Go to Recharge now to deposit funds?");
+      if (goRecharge) navigate("/recharge");
+      return;
+    }
+    if (!window.confirm(`Purchase VIP ${plan.name} for $${amount.toFixed(2)}? Your balance will be used to purchase the plan.`)) return;
     setPurchasing(plan.id);
     try {
       const res = await fetch(`/api/vip-plans/${plan.id}/purchase`, {
