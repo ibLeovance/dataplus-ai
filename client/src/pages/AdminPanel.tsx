@@ -723,7 +723,7 @@ function SelfTopUpDialog() {
                           <Badge variant="outline" className={`text-xs ${n.user_id ? "border-chart-2/20 text-chart-2" : "border-primary/20 text-primary"}`}>
                             {n.user_id ? "single user" : "broadcast"}
                           </Badge>
-                          <Badge variant="outline" className="text-xs border-muted/20 text-muted-foreground">{n.kind}</Badge>
+                          <Badge variant="outline" className="text-xs border-muted/20 text-muted-foreground">{n.is_broadcast ? "broadcast" : "info"}</Badge>
                           <span className="text-xs text-muted-foreground">{n.created_at ? new Date(n.created_at).toLocaleString() : ""}</span>
                         </div>
                         <Button size="sm" variant="outline" className="border-destructive/20 text-destructive" onClick={() => handleDeleteNotification(n.id)}>
@@ -731,7 +731,7 @@ function SelfTopUpDialog() {
                         </Button>
                       </div>
                       <p className="font-medium text-sm">{n.title}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{n.body}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{n.message ?? n.body ?? ""}</p>
                     </div>
                   ))}
                 </div>
