@@ -1538,7 +1538,7 @@ app.get('/api/notifications', async (c) => {
     const userId = (c as any).user?.id;
     if (!userId) return c.json({ error: 'Not authenticated' }, 401);
     const rows = await db.listNotificationsForUser(userId);
-    return c.json({ notifications: rows });
+    return c.json({ notifications: toCamelList(rows) });
   } catch {
     return c.json({ error: 'Internal error' }, 500);
   }
