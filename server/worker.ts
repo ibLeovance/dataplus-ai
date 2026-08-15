@@ -872,6 +872,32 @@ app.get('/api/vip-my', async (c) => {
   }
 });
 
+// ALL VIP purchases for the user (every purchase separately, for Records page)
+app.get('/api/vip/purchases', async (c) => {
+  c.header('cache-control', 'no-store');
+  try {
+    const userId = (c as any).user?.id;
+    if (!userId) return c.json({ error: 'Not authenticated' }, 401);
+    const purchases = await getVipPurchases();
+    const rows = purchases
+      .filter((p: any) => Number(p.userId) === Number(userId))
+      .map((p: any) => ({
+        id: Number(p.id),
+        planName: p.planName,
+        amount: Number(p.amount || 0),
+        status: p.status || 'pending',
+        purchasedAt: p.purchasedAt,
+        validFrom: p.validFrom,
+        validUntil: p.validUntil,
+        validityDays: Number(p.validityDays || 0),
+      }))
+      .sort((a: any, b: any) => new Date(b.purchasedAt).getTime() - new Date(a.purchasedAt).getTime());
+    return c.json({ purchases: toCamelList(rows) });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+
 /**
  * VIP purchase: user expresses intent to buy a VIP tier. The tier activates when
  * admin approves a recharge matching the plan's deposit amount (recharge decision
