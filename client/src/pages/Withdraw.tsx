@@ -306,7 +306,7 @@ export default function Withdraw() {
                         <div>
                           <p className="text-sm font-medium">{w.currency} — ${Number(w.amount).toFixed(4)}</p>
                           <p className="text-xs text-muted-foreground font-mono truncate max-w-[200px]">{w.walletAddress}</p>
-                          <p className="text-xs text-muted-foreground">{new Date(w.createdAt).toLocaleDateString()}</p>
+                          <p className="text-xs text-muted-foreground">{new Date(w.createdAt).toLocaleString()}</p>
                         </div>
                       </div>
                       <Badge variant="outline" className={config.color}>
