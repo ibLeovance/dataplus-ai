@@ -28,8 +28,9 @@ const PLAN_TIERS: Record<string, { accent: string; chip: string }> = {
   Elite: { accent: "from-violet-600/90 to-violet-900/90", chip: "border-violet-500/40 text-violet-700" },
 };
 
-function tierOf(name: string): string {
-  return Object.keys(PLAN_TIERS).find((t) => name.includes(t)) || "Gold";
+function tierOf(name: string | null | undefined): string {
+  const n = (name ?? "").toString().toLowerCase();
+  return Object.keys(PLAN_TIERS).find((t) => n.includes(t.toLowerCase())) || "Gold";
 }
 
 export default function VipTask() {
