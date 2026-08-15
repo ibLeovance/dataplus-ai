@@ -18,6 +18,9 @@ import {
   CheckCircle2,
   Clock,
   Wallet,
+  PlayCircle,
+  ExternalLink,
+  MonitorPlay,
 } from "lucide-react";
 
 const PLAN_TIERS: Record<string, { accent: string; chip: string }> = {
@@ -44,12 +47,26 @@ export default function VipTask() {
   const [balance, setBalance] = useState(0);
   const [dailyDone, setDailyDone] = useState(0);
   const [dailyMax, setDailyMax] = useState(0);
+  const [dailyReward, setDailyReward] = useState(0);
+  const [vipTasks, setVipTasks] = useState<any[]>([]);
+  const [startedTask, setStartedTask] = useState<number | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const [submittingTask, setSubmittingTask] = useState<number | null>(null);
+  const [completedIds, setCompletedIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (!isLoading && !user) {
       navigate("/login");
     }
   }, [user, isLoading, navigate]);
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    if (startedTask !== null) {
+      interval = setInterval(() => setElapsed((e) => e + 1), 1000);
+    }
+    return () => clearInterval(interval);
+  }, [startedTask]);
 
   useEffect(() => {
     if (!user) return;
@@ -59,13 +76,16 @@ export default function VipTask() {
       fetch("/api/vip-my", { headers }).then((r) => (r.ok ? r.json() : Promise.resolve({ vip: null }))),
       fetch("/api/auth/overview", { headers }).then((r) => (r.ok ? r.json() : Promise.resolve({ overview: null }))),
       fetch("/api/tasks/my-completions", { headers }).then((r) => (r.ok ? r.json() : Promise.resolve({ completions: [] }))),
+      fetch("/api/tasks", { headers }).then((r) => (r.ok ? r.json() : Promise.resolve({ tasks: [] }))),
+      fetch("/api/tasks/daily-task", { headers }).then((r) => (r.ok ? r.json() : Promise.resolve({ vip: null, completedToday: 0, limit: 0, rewardEach: 0 }))),
     ])
-      .then(([plansData, vipData, ovData, compData]) => {
+      .then(([plansData, vipData, ovData, compData, tasksData, dailyData]) => {
         setPlans(plansData.plans || []);
         setMyVip(vipData.vip || null);
         setBalance(Number(ovData.overview?.availableBalance || 0));
         const today = new Date().toISOString().slice(0, 10);
-        const done = (compData.completions || []).filter(
+        const comps = compData.completions || [];
+        const done = comps.filter(
           (c: any) => (c.completedAt || c.completed_at || "").toString().startsWith(today)
         ).length;
         const active = (plansData.plans || []).find(
@@ -73,6 +93,16 @@ export default function VipTask() {
         );
         setDailyDone(done);
         setDailyMax(active ? Number(active.maxDailyTasks || 0) : 0);
+        // VIP task section: video tasks the VIP holder can watch & earn on
+        const allTasks = tasksData.tasks || [];
+        const videoTasks = allTasks.filter(
+          (t: any) => t.category === "video" || t.category === "watch_video"
+        );
+        setVipTasks(videoTasks);
+        setCompletedIds(new Set(comps.map((c: any) => Number(c.taskId))));
+        setDailyReward(Number(dailyData.rewardEach || 0));
+        setDailyDone(Number(dailyData.completedToday || 0));
+        setDailyMax(Number(dailyData.limit || 0));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -113,6 +143,48 @@ export default function VipTask() {
 
   const daysLeft = myVip ? Math.max(0, Math.ceil((new Date(myVip.validUntil).getTime() - Date.now()) / 86400000)) : 0;
 
+  const startVipVideo = (task: any) => {
+    if (task.taskUrl) window.open(task.taskUrl, "_blank", "noopener,noreferrer");
+    setStartedTask(task.id);
+    setElapsed(0);
+  };
+
+  const submitVipVideo = async (task: any) => {
+    if (elapsed < 30) {
+      toast.error(`Watch the 30-second video to qualify. ${30 - elapsed}s remaining.`);
+      return;
+    }
+    setSubmittingTask(task.id);
+    try {
+      const res = await fetch("/api/tasks/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ taskId: task.id, proof: `VIP video watched — ${task.title}`, durationWatched: elapsed }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Submission failed");
+      toast.success(`VIP task paid $${dailyReward.toFixed(2)} directly to your wallet!`);
+      setCompletedIds((prev) => new Set(prev).add(task.id));
+      fetch("/api/tasks/daily-task", { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => (r.ok ? r.json() : Promise.resolve({ completedToday: 0, limit: 0 })))
+        .then((d) => {
+          setDailyDone(Number(d.completedToday || 0));
+          setDailyMax(Number(d.limit || 0));
+        });
+      fetch("/api/auth/overview", { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => (r.ok ? r.json() : Promise.resolve({ overview: null })))
+        .then((d) => setBalance(Number(d.overview?.availableBalance || 0)));
+      setStartedTask(null);
+      setElapsed(0);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSubmittingTask(null);
+    }
+  };
+
+  const atDailyLimit = dailyMax > 0 && dailyDone >= dailyMax;
+
   if (isLoading || !user) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -134,7 +206,7 @@ export default function VipTask() {
           </div>
         </div>
 
-        {/* Active VIP banner */}
+        {/* ===== VIP TASK EARNING SECTION (separate, only for active VIP holders) ===== */}
         {myVip && (
           <Card className="border-border shadow-sm mb-6 overflow-hidden">
             <div className={`bg-gradient-to-r ${PLAN_TIERS[tierOf(myVip.planName)]?.accent || PLAN_TIERS.Gold.accent} p-5 text-white`}>
@@ -162,6 +234,133 @@ export default function VipTask() {
               </p>
             </CardContent>
           </Card>
+        )}
+
+        {myVip && (
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 flex items-center justify-center">
+                  <PlayCircle className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold">VIP Task</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Watch the 30-second partner videos and earn ${dailyReward.toFixed(2)} per approved task — paid directly to you.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <Card className="border-border shadow-sm mb-4">
+              <CardContent className="p-4 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-sm">
+                  <CalendarDays className="w-4 h-4 text-primary" />
+                  <span>
+                    Completed today: <b>{dailyDone}</b> / {dailyMax}
+                  </span>
+                </div>
+                <div className="h-2 w-full sm:w-56 rounded-full bg-secondary overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-primary/80 to-primary rounded-full transition-all"
+                    style={{ width: `${dailyMax ? Math.min(100, (dailyDone / dailyMax) * 100) : 0}%` }}
+                  />
+                </div>
+                <Badge className={atDailyLimit ? "bg-emerald-100 text-emerald-700 border border-emerald-200" : "bg-primary/10 text-primary border border-primary/30"}>
+                  {atDailyLimit ? "Today's limit reached" : `${daysLeft} days left`}
+                </Badge>
+              </CardContent>
+            </Card>
+
+            {vipTasks.length === 0 ? (
+              <Card className="border-border shadow-sm">
+                <CardContent className="p-6 text-center text-muted-foreground text-sm">
+                  No VIP videos available right now. Check back soon.
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {vipTasks.map((task: any) => {
+                  const started = startedTask === task.id;
+                  const done = completedIds.has(task.id);
+                  return (
+                    <Card key={task.id} className={`border-border shadow-sm overflow-hidden ${done ? "opacity-60" : ""}`}>
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                              <MonitorPlay className="w-5 h-5 text-primary" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold leading-tight">{task.title}</p>
+                              <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                <Clock className="w-3 h-3" /> 30s video
+                              </p>
+                            </div>
+                          </div>
+                          <Badge className="bg-primary/10 text-primary border border-primary/30 font-bold">
+                            ${dailyReward.toFixed(2)}
+                          </Badge>
+                        </div>
+
+                        {started ? (
+                          <div className="space-y-3">
+                            <div className="text-center">
+                              <p className="text-3xl font-bold text-primary">
+                                {Math.floor(elapsed / 60)}:{(elapsed % 60).toString().padStart(2, "0")}
+                              </p>
+                              <p className={`text-xs font-semibold mt-1 ${elapsed >= 30 ? "text-emerald-600" : "text-muted-foreground"}`}>
+                                {elapsed >= 30
+                                  ? `✓ Watched ${elapsed}s — qualifies for $${dailyReward.toFixed(2)}`
+                                  : `Watch the video (${30 - elapsed}s remaining)`}
+                              </p>
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={() => submitVipVideo(task)}
+                              disabled={submittingTask === task.id || elapsed < 30}
+                              className="w-full h-10 font-semibold"
+                            >
+                              {submittingTask === task.id ? (
+                                <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full mr-2" />
+                              ) : done ? (
+                                <CheckCircle2 className="w-4 h-4 mr-2" />
+                              ) : (
+                                <Coins className="w-4 h-4 mr-2" />
+                              )}
+                              {done ? "Earned" : elapsed >= 30 ? `Submit — get $${dailyReward.toFixed(2)}` : "Keep watching..."}
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => startVipVideo(task)}
+                            disabled={done || atDailyLimit || submittingTask !== null}
+                            className="w-full h-10 font-semibold border-primary/30 text-primary"
+                          >
+                            {done ? (
+                              <>
+                                <CheckCircle2 className="w-4 h-4 mr-2" /> Already done
+                              </>
+                            ) : atDailyLimit ? (
+                              <>
+                                <Lock className="w-4 h-4 mr-2" /> Daily limit reached
+                              </>
+                            ) : (
+                              <>
+                                <ExternalLink className="w-4 h-4 mr-2" /> Start & Watch 30s
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
 
         <p className="text-sm text-muted-foreground mb-4 flex items-center gap-1.5">
