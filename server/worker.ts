@@ -148,12 +148,11 @@ app.use('/api/auth/*', async (c, next) => {
 // Authenticated-user middleware for everything else under /api
 function exempt(c: any, next: any) { (c as any).user = null; return next(); }
 app.use('/api/health', exempt);
-app.use('/api/_echo-env', exempt);
 app.use('/api/share/links', exempt);
 app.use('/api/withdrawals/admin-wallets', exempt);
 app.use('/api/vip-plans', exempt);
 app.use('/api/marketplace-stats', exempt);
-const PUBLIC_API_PATHS = ['/api/health', '/api/_echo-env', '/api/share/links', '/api/withdrawals/admin-wallets', '/api/marketplace-stats', '/api/vip-plans'];
+const PUBLIC_API_PATHS = ['/api/health', '/api/share/links', '/api/withdrawals/admin-wallets', '/api/marketplace-stats', '/api/vip-plans'];
 
 app.use('/api/*', async (c, next) => {
   // Public endpoints skip authentication; /api/auth/* paths are handled by the auth middleware above
@@ -204,28 +203,6 @@ function b(c: any): Record<string, any> {
 // ---------- Health ----------
 app.get('/api/health', (c) => c.json({ status: 'ok', env: getEnv().NODE_ENV || 'development' }));
 
-app.get('/api/_echo-env', async (c) => {
-  const keys = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'JWT_SECRET', 'APP_DOMAIN'];
-  const sources = ['reqEnv', 'globalThis.env', 'process.env'];
-  const report: Record<string, Record<string, boolean>> = {};
-  const reqEnv = (c as any).env;
-  const srcs: [string, any][] = [
-    ['reqEnv', reqEnv],
-    ['globalThis.env', (globalThis as any).env],
-    ['process.env', typeof process !== 'undefined' ? process.env : undefined],
-  ];
-  for (const [name, src] of srcs) {
-    report[name] = {};
-    for (const k of keys) {
-      try {
-        report[name][k] = src && typeof src[k] === 'string' && src[k].length > 0;
-      } catch {
-        report[name][k] = false;
-      }
-    }
-  }
-  return c.json({ report });
-});
 
 // ---------- Rate limiting (in-memory, per-IP; Cloudflare Pages worker process lives ~minutes, enough to stop mass signup bursts) ----------
 const rateBuckets = new Map<string, { count: number; until: number }>();
@@ -357,11 +334,10 @@ app.post('/api/auth/login', async (c) => {
     const { password_hash: _, ...safeUser } = user as any;
     return c.json({ user: toCamel(safeUser), token });
   } catch (err) {
-    console.error('Login error:', err);
+    console.error('Login error:', (err as any)?.message || err);
     return c.json({ error: 'Internal error' }, 500);
   }
 });
-
 app.get('/api/auth/me', async (c) => {
   try {
     const userId = (c as any).user?.id;
@@ -1277,6 +1253,34 @@ app.put('/api/admin/users/:id', async (c) => {
   }
 });
 
+// ---------- Admin unlimited top-up ----------
+app.post('/api/admin/users/:id/topup', async (c) => {
+  try {
+    if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
+    const body = b(c);
+    const amount = parseFloat(body?.amount);
+    if (isNaN(amount) || amount <= 0 || amount > 1000000) {
+      return c.json({ error: 'Invalid amount (must be > 0)' }, 400);
+    }
+    const reason = String(body?.reason || '').trim() || 'Admin top-up';
+    const rows = await db.select('users', { key: 'id', value: parseInt(c.req.param('id')) });
+    const user = rows[0];
+    if (!user) return c.json({ error: 'User not found' }, 404);
+    const newBalance = (parseFloat(user.available_balance || '0') + amount).toFixed(4);
+    await db.updateById('users', user.id, { available_balance: newBalance });
+    try {
+      await db.insertNotification({
+        user_id: user.id,
+        title: 'Balance Top-Up',
+        body: `Admin added $${amount.toFixed(2)} to your account (${reason}). Your balance is now $${newBalance}.`,
+        kind: 'info',
+      });
+    } catch { /* notifications table may not exist yet */ }
+    return c.json({ success: true, newBalance: parseFloat(newBalance) });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
 app.delete('/api/admin/users/:id', async (c) => {
   try {
     if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);

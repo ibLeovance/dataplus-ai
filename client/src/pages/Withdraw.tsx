@@ -204,8 +204,8 @@ export default function Withdraw() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="BTC">Bitcoin (BTC)</SelectItem>
-                  <SelectItem value="USDT">Tether (USDT)</SelectItem>
-                  <SelectItem value="TRX">TRON (TRX)</SelectItem>
+                  <SelectItem value="USDT">Tether (USDT — TRC-20)</SelectItem>
+                  <SelectItem value="TRX">TRON (TRX — TRC-20)</SelectItem>
                 </SelectContent>
               </Select>
             </div>

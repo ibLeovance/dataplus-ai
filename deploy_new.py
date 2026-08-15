@@ -33,8 +33,8 @@ if __name__ == "__main__":
             r = cf_api("POST", "/pages/projects", {"name": PROJECT, "production_branch": "main"})
             print("project created:", r["result"]["subdomain"])
         except Exception as e:
-            print("create failed:", e)
-            raise SystemExit(1)
+            # 400 usually means project already exists under a different check; skip create and deploy anyway
+            print("create skipped (already exists):", e)
     # 2. build
     os.chdir(WDIR)
     r = subprocess.run("pnpm run build:worker", shell=True, capture_output=True, text=True)

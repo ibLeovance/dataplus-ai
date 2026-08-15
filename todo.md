@@ -108,3 +108,13 @@
 - [ ] Rubuta WhatsApp channel description (short bio + cikakken description)
 - [ ] Hada logo/banner a live Cloudflare site (login page + About)
 - [ ] Deploy da gwada live
+
+## Round 17 (15 Aug) — Sidebar cancel, wallet labels, admin unlimited top-up + full edit
+- [x] Sidebar "Refer & Earn" card: add small Cancel/X button; persists dismissed per user (localStorage + DB flag), hidden after login until user re-enables; Log out does not reset show state (persist across sessions)
+- [x] Recharge network labels: wallet 1 is **BNB** (not USDT) — label BEP-20 BNB; TRX wallet label **TRC-20** (USDT on TRON); BTC unchanged
+- [x] Admin: user balance top-up API with amount + reason (free task $10 default, VIP $50) — admin can set ANY amount (unlimited)
+- [x] Admin: payments/deposits approval workflow — approve pending payments and credit user balance directly
+- [x] Admin: notification send per user + broadcast working fully
+- [x] Admin UI: unlimited top-up button in user detail dialog (preset $10 free / $50 VIP + custom amount), approve/reject pending deposits, edit everything
+- [x] Admin dashboard tab to see approved payments and pending payments counts
+- [x] Redeploy to Cloudflare Pages + verify live + push GitHub + update guide

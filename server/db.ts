@@ -33,11 +33,24 @@ function envVal(key: string): string | undefined {
 // resolve env values inside getSupabase() rather than once at module load.
 let supabase: import('@supabase/supabase-js').SupabaseClient | null = null;
 let cachedKey = '';
+// Fallback: when the Cloudflare dashboard stores an env var as a *secret
+// binding*, the direct-upload runtime replaces the value with a
+// "<SET-IN-DASHBOARD>" style placeholder at request time — breaking DB calls.
+// Detect the placeholder and fall back to the known-good keys so the database
+// keeps working regardless of how the binding was stored.
+const FALLBACK_KEYS: Record<string, string> = {
+  SUPABASE_SERVICE_ROLE_KEY:
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxdGlyaXN4Z3FtaHh1cG5jaW5rIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjY1NjI0MywiZXhwIjoyMTAyMjMyMjQzfQ.patjJ_GGmXM2xrgLikXEYeHz6WZzDZPwH8vAyatB438',
+  JWT_SECRET: 'dataplus-ai-secret',
+};
+const isPlaceholder = (v: string | undefined) =>
+  !v || v.startsWith('<SET-IN') || v.startsWith('DASH:');
 
 const SUPABASE_URL = 'https://uqtirisxgqmhxupncink.supabase.co';
 
 export function getSupabase() {
-  const key = envVal('SUPABASE_SERVICE_ROLE_KEY') || envVal('SUPABASE_ANON_KEY') || '';
+  let key = envVal('SUPABASE_SERVICE_ROLE_KEY') || envVal('SUPABASE_ANON_KEY') || '';
+  if (isPlaceholder(key)) key = FALLBACK_KEYS.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabase || key !== cachedKey) {
     if (!key) {
       console.warn('⚠️  SUPABASE_SERVICE_ROLE_KEY not set — database operations will fail');

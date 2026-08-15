@@ -20,6 +20,7 @@ import {
   Headset,
   Store,
   Crown,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -47,6 +48,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [notifs, setNotifs] = useState<any[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [showReferCard, setShowReferCard] = useState(() => {
+    try {
+      return localStorage.getItem("referCardDismissed") === "1";
+    } catch {
+      return false;
+    }
+  });
   const authRef = useRef({ user, token: "" });
 
   if (isLoading) {
@@ -154,9 +162,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Bottom actions */}
       <div className="px-2 pb-4 space-y-1">
-        {/* Refer & Earn card */}
-        {!sidebarCollapsed && (
-          <div className="mx-2 mb-3 p-3 rounded-xl bg-card border border-border shadow-sm">
+        {/* Refer & Earn card (dismissible) */}
+        {!sidebarCollapsed && !showReferCard && (
+          <div className="relative mx-2 mb-3 p-3 rounded-xl bg-card border border-border shadow-sm">
+            <button
+              aria-label="Close"
+              onClick={() => {
+                setShowReferCard(true);
+                try {
+                  localStorage.setItem("referCardDismissed", "1");
+                } catch {}
+              }}
+              className="absolute top-1.5 right-1.5 w-5 h-5 flex items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              title="Hide this card"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
             <div className="flex items-center gap-2 mb-1">
               <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center">
                 <span className="text-sm">💰</span>

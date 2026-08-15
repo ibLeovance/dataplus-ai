@@ -12,14 +12,14 @@ import { Banknote, Copy, ScanLine, ShieldCheck, Wallet } from "lucide-react";
 interface AdminWallets {
   trxAddress: string;
   btcAddress: string;
-  usdtAddress: string;
+  bnbAddress: string;
   minWithdrawal?: number;
 }
 
 const coinMeta: Record<string, { label: string; sub: string; color: string }> = {
-  TRX: { label: "TRX", sub: "Tron Network (TRC-20)", color: "text-primary" },
+  TRX: { label: "USDT", sub: "Tron Network (TRC-20)", color: "text-primary" },
   BTC: { label: "BTC", sub: "Bitcoin Network", color: "text-primary" },
-  USDT: { label: "USDT", sub: "BSC Network (BEP-20)", color: "text-primary" },
+  BNB: { label: "BNB", sub: "BSC Network (BEP-20)", color: "text-primary" },
 };
 
 export default function Recharge() {
@@ -42,7 +42,7 @@ export default function Recharge() {
           setWallets({
             btcAddress: data?.btc || "",
             trxAddress: data?.trx || "",
-            usdtAddress: data?.usdt || "",
+            bnbAddress: data?.bnb || data?.usdt || "",
           });
           setLoading(false);
         })
@@ -70,7 +70,7 @@ export default function Recharge() {
   if (wallets) {
     if (wallets.trxAddress) rows.push({ coin: "TRX", address: wallets.trxAddress });
     if (wallets.btcAddress) rows.push({ coin: "BTC", address: wallets.btcAddress });
-    if (wallets.usdtAddress) rows.push({ coin: "USDT", address: wallets.usdtAddress });
+    if (wallets.bnbAddress) rows.push({ coin: "BNB", address: wallets.bnbAddress });
   }
 
   return (

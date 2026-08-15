@@ -47,6 +47,7 @@ import {
   Receipt,
   Download,
   Image as ImageIcon,
+  CircleDollarSign,
 } from "lucide-react";
 
 export default function AdminPanel() {
@@ -1065,7 +1066,7 @@ function AdminSettings() {
             <Input value={btcWallet} onChange={(e) => setBtcWallet(e.target.value)} className="bg-secondary/50 border-border/50 font-mono text-sm" />
           </div>
           <div className="space-y-2">
-            <Label>USDT/BNB (BSC) Wallet</Label>
+            <Label>BNB (BSC — BEP-20) Wallet</Label>
             <Input value={bnbWallet} onChange={(e) => setBnbWallet(e.target.value)} className="bg-secondary/50 border-border/50 font-mono text-sm" />
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -1293,9 +1294,96 @@ function UserDetailDialog({ user: row, onClose }: { user: any; onClose: () => vo
               <p className="text-xs text-muted-foreground">Expires: {new Date(row.vip.validUntil).toLocaleString()}</p>
             </div>
           )}
+          {/* Unlimited top-up — admin direct */}
+          <TopUpPanel userId={row.id} balance={Number(row.availableBalance || 0)} onDone={() => {}} />
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function TopUpPanel({ userId, balance, onDone }: { userId: number; balance: number; onDone: () => void }) {
+  const { token } = useAuth();
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("Admin top-up");
+  const [busy, setBusy] = useState(false);
+
+  const quickAdd = (preset: number, presetReason: string) => {
+    setAmount(String(preset));
+    setReason(presetReason);
+    void doTopUp(preset, presetReason);
+  };
+
+  const doTopUp = async (amt: number, rsn: string) => {
+    if (!amt || amt <= 0) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/topup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ amount: amt, reason: rsn }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Top-up failed");
+      toast.success(`Added $${amt.toFixed(2)} to user's balance. New balance: $${Number(d.newBalance).toFixed(4)}`);
+      setAmount("");
+      onDone();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitCustom = () => {
+    const amt = parseFloat(amount);
+    if (isNaN(amt) || amt <= 0) {
+      toast.error("Enter a valid amount");
+      return;
+    }
+    void doTopUp(amt, reason.trim() || "Admin top-up");
+  };
+
+  return (
+    <div className="p-3 rounded-lg bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20">
+      <p className="text-xs font-semibold text-primary mb-2 flex items-center gap-1.5">
+        <CircleDollarSign className="w-4 h-4" /> Add Money (Unlimited — direct to balance)
+      </p>
+      <div className="flex gap-2 mb-2">
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => quickAdd(10, "Free Task bonus")} className="flex-1 h-8 text-xs border-primary/20 text-primary hover:bg-primary/10">
+          + $10 Free Task
+        </Button>
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => quickAdd(50, "VIP Task bonus")} className="flex-1 h-8 text-xs border-primary/20 text-primary hover:bg-primary/10">
+          + $50 VIP Task
+        </Button>
+      </div>
+      <div className="flex gap-2 items-center">
+        <div className="relative flex-1">
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+          <Input
+            type="number"
+            step="0.01"
+            min="0.01"
+            placeholder="Custom amount"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="bg-card border-border/50 pl-6 h-8 text-sm"
+          />
+        </div>
+        <Input
+          placeholder="Reason"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          className="bg-card border-border/50 h-8 text-xs"
+        />
+        <Button size="sm" onClick={submitCustom} disabled={busy} className="h-8 px-3 bg-primary text-primary-foreground">
+          {busy ? <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full" /> : <Plus className="w-3.5 h-3.5" />}
+        </Button>
+      </div>
+      <p className="text-[10px] text-muted-foreground mt-1.5">
+        Any amount can be added (unlimited). The user receives an instant notification.
+      </p>
+    </div>
   );
 }
 
