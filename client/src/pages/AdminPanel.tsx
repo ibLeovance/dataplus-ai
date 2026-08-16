@@ -26,6 +26,37 @@ function UserHubBox({ user, onEdit, onDeleteNotification, onRefresh }: { user: a
         <Button size="sm" variant="outline" className="h-7 text-[10px] border-chart-2/30 text-chart-2 hover:bg-chart-2/10" onClick={() => void onEdit(user.userId, { is_banned: false, status: "active" })} disabled={user.status === "active"}>Approve / Activate</Button>
         <Button size="sm" variant="outline" className="h-7 text-[10px] border-warning/30 text-warning hover:bg-warning/10" onClick={() => { if (confirm("Suspend this user?")) void onEdit(user.userId, { is_banned: true, status: "suspended" }); }}>Suspend</Button>
         <Button size="sm" variant="outline" className="h-7 text-[10px] border-primary/20 text-primary hover:bg-primary/10" onClick={() => void onEdit(user.userId, { role: user.role === "admin" ? "user" : "admin" })}>{user.role === "admin" ? "Demote to User" : "Promote to Admin"}</Button>
+        {/* Round 41: Self Deduction (Unlimited) — cage any amount from the user's balance */}
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button size="sm" variant="outline" className="h-7 text-[10px] border-warning/30 text-warning hover:bg-warning/10"><CircleDollarSign className="w-3 h-3 mr-1" /> Deduct</Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[340px]">
+            <DialogHeader><DialogTitle className="text-sm">Deduct from {name}</DialogTitle></DialogHeader>
+            <div className="space-y-3 pt-1">
+              <p className="text-[11px] text-muted-foreground">Self Deduction (Unlimited) — removes money from the user's balance and notifies them instantly.</p>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="flex-1 h-8 text-xs border-warning/30 text-warning" onClick={() => void onEdit(user.userId, { available_balance: Math.max(0, Number(user.balance || 0) - 10).toFixed(4) })}>- $10</Button>
+                <Button size="sm" variant="outline" className="flex-1 h-8 text-xs border-warning/30 text-warning" onClick={() => void onEdit(user.userId, { available_balance: Math.max(0, Number(user.balance || 0) - 50).toFixed(4) })}>- $50</Button>
+                <Button size="sm" variant="outline" className="flex-1 h-8 text-xs border-warning/30 text-warning" onClick={() => void onEdit(user.userId, { available_balance: Math.max(0, Number(user.balance || 0) - 100).toFixed(4) })}>- $100</Button>
+              </div>
+              <div className="flex gap-2 items-center">
+                <div className="relative flex-1"><span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span><Input type="number" step="0.01" min="0.01" placeholder="Custom" value={topUpAmt} onChange={(e) => setTopUpAmt(e.target.value)} className="pl-6 h-9" /></div>
+                <Button disabled={topupBusy} onClick={() => { const a = parseFloat(topUpAmt); if (!a || a <= 0) { toast.error("Enter amount"); return; } void onEdit(user.userId, { available_balance: Math.max(0, Number(user.balance || 0) - a).toFixed(4) }).then(() => setTopUpAmt("")); }} className="h-9 shrink-0 bg-warning text-warning-foreground hover:bg-warning/90">Deduct</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+        {/* Round 41: Full A–Z edit dialog for this user */}
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button size="sm" variant="outline" className="h-7 text-[10px] border-primary/20 text-primary hover:bg-primary/10"><Pencil className="w-3 h-3 mr-1" /> Edit A–Z</Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[460px] max-h-[85vh] overflow-y-auto">
+            <DialogHeader><DialogTitle className="text-sm">Edit {name} — Unlimited</DialogTitle></DialogHeader>
+            <HubEditForm user={user} onEdit={onEdit} onDone={onRefresh} />
+          </DialogContent>
+        </Dialog>
         <Dialog>
           <DialogTrigger asChild>
             <Button size="sm" variant="outline" className="h-7 text-[10px] border-primary/20 text-primary hover:bg-primary/10"><Plus className="w-3 h-3 mr-1" /> Credit</Button>
@@ -63,6 +94,71 @@ function UserHubBox({ user, onEdit, onDeleteNotification, onRefresh }: { user: a
         ))}
       </div>
       <p className="text-[10px] text-muted-foreground mt-1.5">{user.total} activity item(s) · {user.unread} unread</p>
+    </div>
+  );
+}
+
+// Round 41: Unlimited A–Z edit form used inside the Notifications Hub box
+function HubEditForm({ user, onEdit, onDone }: { user: any; onEdit: (id: number, fields: Record<string, any>) => Promise<void>; onDone: () => void }) {
+  const [form, setForm] = useState({
+    username: user.userName || "",
+    email: user.userEmail || "",
+    available_balance: String(Number(user.balance || 0).toFixed(4)),
+    total_earned: String(Number(user.totalEarned || 0).toFixed(4)),
+    btc_address: "",
+    usdt_address: "",
+    trx_address: "",
+    role: user.role || "user",
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await onEdit(user.userId, {
+        username: form.username.trim() || undefined,
+        email: form.email.trim() || undefined,
+        available_balance: form.available_balance,
+        total_earned: form.total_earned,
+        btc_address: form.btc_address.trim() || undefined,
+        usdt_address: form.usdt_address.trim() || undefined,
+        trx_address: form.trx_address.trim() || undefined,
+        role: form.role,
+      });
+      onDone();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1"><Label className="text-xs">Username</Label><Input value={form.username} onChange={(e) => set("username", e.target.value)} className="h-8 text-xs bg-secondary/50 border-border/50" /></div>
+        <div className="space-y-1"><Label className="text-xs">Email</Label><Input value={form.email} onChange={(e) => set("email", e.target.value)} className="h-8 text-xs bg-secondary/50 border-border/50" /></div>
+        <div className="space-y-1"><Label className="text-xs">Balance (USD)</Label><Input type="number" step="0.0001" value={form.available_balance} onChange={(e) => set("available_balance", e.target.value)} className="h-8 text-xs bg-secondary/50 border-border/50" /></div>
+        <div className="space-y-1"><Label className="text-xs">Total Earned (USD)</Label><Input type="number" step="0.0001" value={form.total_earned} onChange={(e) => set("total_earned", e.target.value)} className="h-8 text-xs bg-secondary/50 border-border/50" /></div>
+      </div>
+      <div className="space-y-1"><Label className="text-xs">BTC Address</Label><Input value={form.btc_address} onChange={(e) => set("btc_address", e.target.value)} className="h-8 text-xs bg-secondary/50 border-border/50 font-mono" /></div>
+      <div className="space-y-1"><Label className="text-xs">USDT Address</Label><Input value={form.usdt_address} onChange={(e) => set("usdt_address", e.target.value)} className="h-8 text-xs bg-secondary/50 border-border/50 font-mono" /></div>
+      <div className="space-y-1"><Label className="text-xs">TRX Address</Label><Input value={form.trx_address} onChange={(e) => set("trx_address", e.target.value)} className="h-8 text-xs bg-secondary/50 border-border/50 font-mono" /></div>
+      <div className="space-y-1">
+        <Label className="text-xs">Role</Label>
+        <Select value={form.role} onValueChange={(v) => set("role", v)}>
+          <SelectTrigger className="h-8 text-xs bg-secondary/50 border-border/50"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="user">user</SelectItem>
+            <SelectItem value="admin">admin</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex gap-2">
+        <Button disabled={busy} onClick={save} className="flex-1 bg-gradient-to-r bg-primary text-primary-foreground font-semibold hover:opacity-90">
+          {busy ? <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full mr-2" /> : null}
+          Save — live in account
+        </Button>
+      </div>
     </div>
   );
 }
@@ -288,6 +384,30 @@ function AdminContent() {
 
   const reviewCompletion = useApiMutation("PUT", "/api/admin/completions/review/", undefined);
 
+  // Round 41: Review ALL pending completions automatically (every user) with one click
+  const [reviewingAll, setReviewingAll] = useState(false);
+  const reviewAllCompletions = async (mode: "approve" | "reject") => {
+    if (!confirm(mode === "approve" ? "Approve ALL pending task submissions for every user automatically?" : "Reject ALL pending task submissions?")) return;
+    setReviewingAll(true);
+    try {
+      const res = await fetch("/api/admin/completions/review-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ mode }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Batch review failed");
+      toast.success(mode === "approve"
+        ? `All pending tasks approved automatically — ${d.reviewed ?? 0} tasks, $${Number(d.totalAmount || 0).toFixed(2)} credited.`
+        : `All pending tasks rejected — ${d.reviewed ?? 0} removed.`);
+      refreshComps(); refreshUsers(); refreshHub();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setReviewingAll(false);
+    }
+  };
+
   // Withdrawals
   const { data: wdsData, loading: wdLoading, refresh: refreshWds } = useApiFetch("/api/admin/withdrawals");
   const withdrawals = wdsData?.withdrawals || wdsData || [];
@@ -330,6 +450,23 @@ function AdminContent() {
   const handleHubEdit = async (userId: number, fields: Record<string, any>) => {
     if (!userId) { toast.error("Unknown user"); return; }
     try {
+      // Round 41: allow direct balance deduction through the proper deduction endpoint when available_balance is decreasing
+      if (fields.available_balance !== undefined) {
+        const row = allUsers.find((u: any) => Number(u.id) === Number(userId));
+        const cur = Number(row?.availableBalance || row?.available_balance || userBalanceFromHub(userId) || 0);
+        if (Number(fields.available_balance) < cur) {
+          const amt = cur - Number(fields.available_balance);
+          const res = await fetch(`/api/admin/users/${userId}/deduct`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders },
+            body: JSON.stringify({ amount: amt, reason: "Admin edit in Notifications Hub" }),
+          });
+          const d = await res.json();
+          if (!res.ok) throw new Error(d.error || "Deduction failed");
+          toast.success(`Deducted $${amt.toFixed(2)} (Self Deduction Unlimited). New balance: $${Number(d.newBalance).toFixed(4)}`);
+          refreshUsers(); refreshHub(); return;
+        }
+      }
       const res = await fetch(`/api/admin/users/${userId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", ...authHeaders },
@@ -337,10 +474,24 @@ function AdminContent() {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "Update failed");
-      toast.success("User updated!");
+      toast.success("User updated — change is live in their account!");
       refreshUsers(); refreshHub();
     } catch (e: any) { toast.error(e.message); }
   };
+  const userBalanceFromHub = (userId: number): number | null => {
+    const box = hubUsers.find((h: any) => Number(h.userId) === Number(userId));
+    return box ? Number(box.balance || 0) : null;
+  };
+
+  // Round 41: after viewing the Hub, mark every item reviewed (they hide and only new activity re-opens them)
+  const markHubReviewed = useCallback(async () => {
+    try {
+      await fetch("/api/admin/notification-hub/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders },
+      });
+    } catch { /* no-op */ }
+  }, [authHeaders]);
 
   const handleDeleteNotification = async (id: number) => {
     if (!confirm("Delete this notification?")) return;
@@ -634,6 +785,20 @@ function SelfTopUpDialog() {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {/* Round 41: one-click automatic review for every user */}
+              {completions.length > 0 && (
+                <div className="flex gap-2 mb-3 pb-3 border-b border-border/50 flex-wrap">
+                  <Button size="sm" disabled={reviewingAll} onClick={() => reviewAllCompletions("approve")} className="bg-emerald-600 text-white hover:bg-emerald-700 h-8">
+                    {reviewingAll ? <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-1" />}
+                    Auto-Approve All Pending
+                  </Button>
+                  <Button size="sm" disabled={reviewingAll} variant="outline" onClick={() => reviewAllCompletions("reject")} className="border-destructive/30 text-destructive hover:bg-destructive/10 h-8">
+                    {reviewingAll ? <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full mr-2" /> : <XCircle className="w-4 h-4 mr-1" />}
+                    Reject All Pending
+                  </Button>
+                  <p className="text-[11px] text-muted-foreground self-center">Auto-approve pays every user instantly and notifies them — Free Task and VIP Task approvals are sent as separate notifications.</p>
+                </div>
+              )}
               {compLoading ? (
                 <div className="flex justify-center py-8">
                   <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
@@ -732,7 +897,7 @@ function SelfTopUpDialog() {
                             if (tx !== null) handlePayWithdrawal(w.id, tx || "");
                           }}>
                             <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                            Mark Paid
+                            Approve / Mark Paid
                           </Button>
                           <Button size="sm" variant="outline" className="border-destructive/20 text-destructive hover:bg-destructive/10" onClick={() => handleRejectWithdrawal(w.id)}>
                             <XCircle className="w-3.5 h-3.5 mr-1" />
@@ -827,11 +992,16 @@ function SelfTopUpDialog() {
           <Card className="bg-card mb-4">
             <CardHeader className="flex flex-row items-center justify-between py-3">
               <CardTitle className="flex items-center gap-2 text-base">
-                <Bell className="w-5 h-5 text-primary" /> Notifications Hub — User Activity
+                <Bell className="w-5 h-5 text-primary" /> Notifications Hub — User Activity {totalHubUnread > 0 && <Badge className="bg-destructive text-destructive-foreground ml-1">{totalHubUnread} new</Badge>}
               </CardTitle>
-              <Button size="sm" variant="outline" className="border-primary/20 text-primary hover:bg-primary/10" onClick={() => refreshHub()}>
-                <Clock className="w-3.5 h-3.5 mr-1" /> Refresh
-              </Button>
+              <div className="flex items-center gap-1.5">
+                <Button size="sm" variant="outline" className="border-chart-2/20 text-chart-2 hover:bg-chart-2/10" onClick={() => { void markHubReviewed(); toast.success("All activity marked reviewed — they now hide and will re-open only when users post new activity."); }}>
+                  <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Mark All Reviewed
+                </Button>
+                <Button size="sm" variant="outline" className="border-primary/20 text-primary hover:bg-primary/10" onClick={() => refreshHub()}>
+                  <Clock className="w-3.5 h-3.5 mr-1" /> Refresh
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {hubLoading ? (
@@ -1448,7 +1618,7 @@ function AdminDeposits() {
   const [deciding, setDeciding] = useState<number | null>(null);
   const [noteDraft, setNoteDraft] = useState<Record<number, string>>({});
 
-  const handleDecision = async (id: number, decision: "approved" | "rejected") => {
+  const handleDecision = async (id: number, decision: "approved" | "rejected" | "invalid") => {
     setDeciding(id);
     try {
       const res = await fetch(`/api/admin/recharges/${id}/decision`, {
@@ -1472,6 +1642,8 @@ function AdminDeposits() {
       return <Badge className="bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/20">Approved</Badge>;
     if (status === "rejected")
       return <Badge className="bg-destructive/15 text-destructive hover:bg-destructive/25">Rejected</Badge>;
+    if (status === "invalid")
+      return <Badge className="bg-muted-foreground/15 text-muted-foreground hover:bg-muted-foreground/25">Invalid</Badge>;
     return <Badge className="bg-warning/15 text-warning-foreground hover:bg-warning/25">Pending</Badge>;
   };
 
@@ -1543,6 +1715,16 @@ function AdminDeposits() {
                             className="border-destructive/40 text-destructive hover:bg-destructive/10 h-8"
                           >
                             <XCircle className="w-4 h-4 mr-1" /> Reject
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDecision(r.id, "invalid")}
+                            disabled={deciding === r.id}
+                            className="border-destructive/60 bg-destructive/10 text-destructive hover:bg-destructive/20 h-8"
+                            title="Receipt is fake / invalid — mark and notify the user"
+                          >
+                            <XCircle className="w-4 h-4 mr-1" /> Invalid
                           </Button>
                         </>
                       )}

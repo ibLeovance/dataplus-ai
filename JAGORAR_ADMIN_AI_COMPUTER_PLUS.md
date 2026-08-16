@@ -457,3 +457,52 @@ Sabon shafi na gaba ɗaya wanda ke nuna **duk ayyukan kowanne user**:
 
 ### 22d. Lura ga Deployment (Round 40)
 An deploy (16/08/2026). VIP videos da free videos sun rabu (tiered pools), 24h reset yana aiki, Import Ad-Network Tasks yana aiki.
+
+---
+## SASHE 23 — Round 41: Self Deduction, Hub Edit A–Z, Auto Review, Invalid Deposit da Read-State
+### 23a. Self Deduction (Unlimited) a Notifications Hub
+A cikin kowanne user box na Hub, akwai sabon maballin **Deduct**. Yana cire kudi daga balance na user ba tare da iyaka ba: za a iya cire -$10, -$50, -$100, ko duk wani adadi da ka rubuta. Idan an yi amfani da **Edit A–Z** kuma ka rage balance a wurin, tsarin zai kunna deduct atomatik. User zai sami sanarwa nan take a cikin account dinsa.
+### 23b. Edit A–Z (Unlimited) a Notifications Hub
+Kowanne user box yanzu yana da maballin **Edit A–Z** — babban dialog wanda zaka iya gyara: username, email, balance, total earned, wallet addresses (BTC/USDT/TRX), da role. Komai da kake save zai shiga account ɗin user kai tsaye (live in account).
+### 23c. Mark All Reviewed — Sanarwa suna bacewa bayan an duba
+A saman Hub akwai maballin **Mark All Reviewed**. Da zarar ka danna shi, duk sanarwofin da ka duba zasu **bacewa** — kuma zasu sake fitowa kawai idan user ya yi sabon ayyuka (sabon register, deposit, withdrawal, task, da sauransu). Alamar ɗaya (badge) tana nuna **adadin sabbin ayyuka**. Haka ma duk daidaitawa da admin yayi a deposit/withdrawal suna bayyana a Hub azaman sabon activity.
+### 23d. Auto Task Review — Tabbatarwa ga kowanne user sau ɗaya
+A tab **Reviews** akwai sabbin maballai guda biyu a saman: **Auto-Approve All Pending** (kore) da **Reject All Pending** (ja). Danna guda ɗaya zai tabbatar duk daidaitattun submissions na DUKKA users atomatik — kudin zai shiga account na kowanne user nan take, kuma Free Task da VIP Task suna samun sanarwa daban-daban.
+### 23e. Withdrawals — Direct Approve
+A tab **Withdrawals**, maballin yanzu shine **Approve / Mark Paid** — danna guda ɗaya (za a iya shigar da TX hash idan kana so), kuma sai **Reject**. Daidaitawa ta shiga Hub din admin azaman activity.
+### 23f. Deposits — Sabon Status "Invalid"
+A tab **Deposits** yanzu akwai maballai uku ga kowanne pending recharge: **Approve** (kore), **Reject** (ja), da **Invalid** (mai alamar ja mai duhu) — Invalid yana nufin receipt ɗin user ɓarna ne ko mara inganci; yana tura sanarwa ga user da kuma bayyana a Hub din admin tare da bayanan daidaitawa.
+### 23g. Funding da Bots Tabs
+Tabs ɗin **Funding** (revenue ledger + daily login credit) da **Bots** (bots na task da kudinsu) suna nan a Admin Panel a koyaushe — a matsayin tabs daban da ba a haɗa su da Users ba, kamar yadda aka umarta (kowanne pages daban).
+### 23h. Endpoints na Round 41
+| Endpoint | Bayani |
+|---|---|
+| `POST /api/admin/users/:id/deduct` | Self Deduction (Unlimited) — yana tura sanarwa ga user |
+| `POST /api/admin/completions/review-all` | Auto approve/reject duk pending tasks na kowanne user |
+| `POST /api/admin/notification-hub/review` | Mark all read (items suna bacewa har sai sabon activity) |
+| `PUT /api/admin/recharges/:id/decision` | decision yanzu zai iya: approved / rejected / **invalid** |
+| `PUT /api/admin/withdrawals/:id` | Yana tura admin-Hub activity a kowanne decision |
+
+*Lura: an gwada duk endpoints na sama a live site (16/08/2026) — duka sun komowa 200 OK.*
+
+## SASHE 24 — TSARIN REGISTER & LOGIN (Round 42)
+
+**Me muka kara a Register (Kirkiri Account):**
+- Tsarin zabar **kasar (country)** yanzu yana zaba ta **kanshi (auto)** bisa ga inda mai amfani yake — idan daga Najeriya zai ga Nigeria, daga UK zai ga United Kingdom. Amma har yanzu mutum zai iya canza shi da kansa.
+- An kara **maɓallin ganin password (👁 eye icon)** a gefen filin password — mutum zai iya gani ko boye kalmar sirri ta.
+- An kara **mataimakin karfin password (strength meter)** — layuka hudu: Weak → Fair → Good → Strong. Idan password ya fi ƙarfi zai zama kore.
+- An kara **gurin Referral Code** — idan wani ya aiko maka da link na `?ref=CODE`, code din zai shiga atomatik. Ko kuma mutum zai iya rubuta shi da kansa (optional).
+- **Kuskure na filin (inline errors)** — idan email marar inganci, wayar da ba daidai ba, ko sunan da aka riga an yi amfani da shi, kuskuren zai bayyana a ƙasan filin da ja, ba sauran rubutu ba.
+- Sabon rubutu a ƙasan "Detected automatically from your connection — Nigeria by default."
+
+**Me muka kara a Login (Shiga):**
+- Maɓallin **ganin password (👁)** a login ma.
+- Sabon zaɓi **"Remember my email on this device"** — idan ka yi tick, email dinka zai bayyana a shafin gaba lokacin da ka dawo shiga.
+- Kuskuren suna bayyana a filin: "This email is already registered — try Sign In" idan ka yi register a email ɗin da yake da account riga.
+
+**Abin da muka KIYAYE (ba a cire komai ba):**
+- Tsarin shiga guda ɗaya (email + phone + password a shafi ɗaya).
+- Tsarin register guda ɗaya (username + country + phone + email + password).
+- Duk dokokin tsaro: rate limit (5 register/15 min), hana disposable email, bcrypt encryption, sanarwar bacci (welcome notification), referral link.
+- Duk abubuwan Round 1-41: 24h task reset, tiered video pools, Notifications Hub, Funding, Bots, Self Deduction, Task Review, Deposits Approved/Rejected/Invalid — duk suna nan yadda suke.
+

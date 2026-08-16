@@ -1380,6 +1380,52 @@ app.delete('/api/admin/tasks/:id', async (c) => {
   }
 });
 
+// Round 41: Auto-review — approve ALL pending task completions (every user) automatically
+app.post('/api/admin/completions/review-all', async (c) => {
+  try {
+    if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
+    const body = b(c);
+    const mode = String(body?.mode || 'approve'); // 'approve' | 'reject'
+    const pending = await db.select('completions', { key: 'status', value: 'pending' });
+    let approvedCount = 0;
+    let totalAmount = 0;
+    for (const comp of pending) {
+      const taskRows = await db.select('tasks', { key: 'id', value: comp.task_id });
+      const task = taskRows[0];
+      const isVipComp = String(comp.funding || '') === 'user' || (task && String(task.funding || '') === 'user');
+      if (mode === 'approve') {
+        await db.updateById('completions', comp.id, { status: 'approved', reviewed_at: new Date().toISOString() });
+        const userRows = await db.select('users', { key: 'id', value: comp.user_id });
+        const user = userRows[0];
+        if (user) {
+          const reward = parseFloat(comp.reward || '0');
+          const newBalance = (parseFloat(user.available_balance || '0') + reward).toFixed(4);
+          const newTotal = (parseFloat(user.total_earned || '0') + reward).toFixed(4);
+          await db.updateById('users', user.id, { available_balance: newBalance, total_earned: newTotal });
+          totalAmount += reward;
+        }
+        approvedCount++;
+        try {
+          const isVip = Number(user?.deposit_amount || 0) >= 5; // VIP users pay wallet-style
+          await db.insertNotification({
+            user_id: comp.user_id,
+            title: isVip ? 'VIP Task Approved' : 'Free Task Approved',
+            body: `Your task "${task?.title || 'task'}" ($${parseFloat(comp.reward || '0').toFixed(2)}) has been approved and credited to your account.`,
+            kind: 'info',
+          });
+        } catch { /* no-op */ }
+      } else {
+        await db.updateById('completions', comp.id, { status: 'rejected', reviewed_at: new Date().toISOString() });
+        approvedCount++;
+      }
+    }
+    await recordActivity('task-review', (c as any).user.id, `${mode === 'approve' ? 'Approved' : 'Rejected'} ${approvedCount} pending completions`);
+    return c.json({ success: true, reviewed: approvedCount, totalAmount });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
+
 app.get('/api/admin/completions/pending', async (c) => {
   try {
     if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
@@ -1459,6 +1505,13 @@ app.put('/api/admin/withdrawals/:id', async (c) => {
     };
     if (walletAddress !== undefined) patch.wallet_address = walletAddress;
     await db.updateById('withdrawals', parseInt(c.req.param('id')), patch);
+    // Notify the admin Hub about this decision (auto-appears in Notifications Hub)
+    try {
+      const adminId = (c as any).user?.id || null;
+      if (adminId && status) {
+        await emitAdminNotification(`Withdrawal ${status}: user #${parseInt(c.req.param('id'))}`, adminId, { kind: 'withdrawal-decision', status });
+      }
+    } catch { /* no-op */ }
     return c.json({ success: true });
   } catch {
     return c.json({ error: 'Internal error' }, 500);
@@ -1668,6 +1721,36 @@ app.put('/api/admin/users/:id', async (c) => {
   }
 });
 
+// ---------- Round 41: Self Deduction (Unlimited) — admin deducts any amount from ANY user (or himself) ----------
+app.post('/api/admin/users/:id/deduct', async (c) => {
+  try {
+    if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
+    const body = b(c);
+    const amount = parseFloat(body?.amount);
+    if (isNaN(amount) || amount <= 0 || amount > 10000000) {
+      return c.json({ error: 'Invalid amount (must be > 0)' }, 400);
+    }
+    const reason = String(body?.reason || '').trim() || 'Admin deduction';
+    const rows = await db.select('users', { key: 'id', value: parseInt(c.req.param('id')) });
+    const user = rows[0];
+    if (!user) return c.json({ error: 'User not found' }, 404);
+    const cur = parseFloat(user.available_balance || '0');
+    const newBalance = Math.max(0, cur - amount).toFixed(4);
+    await db.updateById('users', user.id, { available_balance: newBalance });
+    try {
+      await db.insertNotification({
+        user_id: user.id,
+        title: 'Balance Deduction',
+        body: `Admin deducted $${amount.toFixed(2)} from your account (${reason}). Your balance is now $${newBalance}.`,
+        kind: 'info',
+      });
+      await recordActivity('deduction', user.id, `-$${amount.toFixed(2)} (${reason})`);
+    } catch { /* notifications table may not exist yet */ }
+    return c.json({ success: true, newBalance: parseFloat(newBalance) });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
 // ---------- Admin self top-up (Round 22) — admin adds any amount to his OWN balance ----------
 app.post('/api/admin/self-topup', async (c) => {
   try {
@@ -1816,6 +1899,25 @@ app.delete('/api/admin/notifications/:id', async (c) => {
 });
 
 // ---------- Notifications (user) ----------
+
+// Round 41: Admin reviews the Hub — mark ALL activities for a user (or all users) as reviewed/hide-after-view.
+// Admin gets a fresh stream: when he/she views the Hub, items are marked reviewed so they hide;
+// they re-appear only when a NEW activity arrives (new unread count).
+app.post('/api/admin/notification-hub/review', async (c) => {
+  try {
+    if (!adminGuard(c)) return c.json({ error: 'Admin only' }, 403);
+    const body = b(c);
+    const userId = body?.userId != null ? Number(body.userId) : null; // null = all users
+    const all = await db.listAllNotifications();
+    const ids = (all || []).filter((r: any) => !r.read_status && (userId == null || Number(r.user_id) === userId)).map((r: any) => r.id);
+    for (const id of ids) {
+      await db.markNotificationRead(id);
+    }
+    return c.json({ success: true, marked: ids.length });
+  } catch {
+    return c.json({ error: 'Internal error' }, 500);
+  }
+});
 
 // Round 40: Notifications Hub — groups all activities by user so each user gets an inbox box
 app.get('/api/admin/notification-hub', async (c) => {
@@ -2047,8 +2149,8 @@ app.put('/api/admin/recharges/:id/decision', async (c) => {
     const body = b(c);
     const decision = String(body?.decision || '');
     const note = String(body?.note || '').trim();
-    if (!['approved', 'rejected'].includes(decision)) {
-      return c.json({ error: 'Invalid decision (approved|rejected)' }, 400);
+    if (!['approved', 'rejected', 'invalid'].includes(decision)) {
+      return c.json({ error: 'Invalid decision (approved|rejected|invalid)' }, 400);
     }
     const rows = await db.select('recharges', { key: 'id', value: parseInt(c.req.param('id')) });
     const recharge = rows[0];
@@ -2121,20 +2223,39 @@ app.put('/api/admin/recharges/:id/decision', async (c) => {
           kind: 'info',
         });
       } catch { /* notifications table may not exist yet */ }
-    } else {
+    } else if (decision === 'rejected') {
       try {
         await db.insertNotification({
           user_id: recharge.user_id,
-          title: 'Deposit Not Approved',
+          title: 'Deposit Rejected',
           body: note
-            ? `Your deposit receipt was not approved: ${note}. Please re-upload a valid receipt.`
-            : 'Your deposit receipt was not approved. Please re-upload a valid receipt.',
+            ? `Your deposit receipt was rejected: ${note}. Please re-upload a valid receipt.`
+            : 'Your deposit receipt was rejected. Please re-upload a valid receipt.',
+          kind: 'info',
+        });
+      } catch { /* notifications table may not exist yet */ }
+    } else {
+      // invalid receipt — marked as invalid without rejection stigma
+      try {
+        await db.insertNotification({
+          user_id: recharge.user_id,
+          title: 'Deposit Receipt Invalid',
+          body: note
+            ? `Your deposit receipt could not be verified: ${note}. Please send a clear receipt and try again.`
+            : 'Your deposit receipt could not be verified. Please send a clear receipt and try again.',
           kind: 'info',
         });
       } catch { /* notifications table may not exist yet */ }
     }
     // Free storage for decided receipts
     if (recharge.id) await delReceiptStorage(recharge.id);
+    // Notify the admin Hub about this decision (auto-appears in Notifications Hub)
+    try {
+      const adminId = (c as any).user?.id || null;
+      if (adminId) {
+        await emitAdminNotification(`Deposit ${decision}: user #${recharge.user_id} — $${Number(recharge.amount || 0).toFixed(2)}`, adminId, { kind: 'deposit-decision', decision, userId: recharge.user_id, amount: Number(recharge.amount || 0).toFixed(2) });
+      }
+    } catch { /* no-op */ }
     return c.json({ success: true });
   } catch {
     return c.json({ error: 'Internal error' }, 500);
