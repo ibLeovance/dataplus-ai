@@ -214,9 +214,9 @@ export const db = {
       const result = await supabase.from('notifications').insert({
         user_id: row.user_id ?? null,
         title: row.title,
-        body: row.body ?? '',
-        kind: row.kind ?? 'broadcast',
+        message: row.body ?? '',
         is_broadcast: row.user_id == null,
+        read_status: false,
       });
       if (result.error && result.error.code === 'PGRST200') {
         console.warn('notifications table missing — notification not stored');
@@ -239,7 +239,8 @@ export const db = {
   listNotificationsForUser: async (userId: number): Promise<any[]> => {
     try {
       const rows = await db.select<any>('notifications');
-      return (rows || []).filter(r => r.user_id == null || r.user_id === userId);
+      const mine = (rows || []).filter(r => r.user_id == null || r.user_id === userId);
+      return mine.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     } catch {
       return [];
     }
@@ -255,7 +256,7 @@ export const db = {
 
   markNotificationRead: async (id: number): Promise<void> => {
     try {
-      await db.updateById('notifications', id, { is_read: true });
+      await db.updateById('notifications', id, { read_status: true });
     } catch {
       // table may not exist yet — no-op
     }

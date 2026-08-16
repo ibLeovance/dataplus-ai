@@ -427,3 +427,33 @@ A tab na **Users** a Admin Panel, yanzu ga kowane user:
 An gwada a live site (14/08/2026): register sabon user → $50 recharge → admin ya yarda → **VIP Silver ya kunna nan take**; VIP user ya kammala video task 30s → **$1.20 shiga wallet ɗinsa**; free user ya kammala → **$0.05 shiga account na admin**; withdrawal da PIN kuskure → **an ƙi**, da PIN daidai → **200 OK, fee $0.50 akan $10, net $9.50**; Admin users endpoint → **200 OK da users 17** cikakku.
 
 An kuma gyara matsalar Cloudflare *subrequest limit* (100) da ta sa admin panel ya yi 500 — yanzu batched queries ne, sauri sosai.
+
+---
+
+## SASHE 22 — Recharge Wording da Notifications Hub (Round 40)
+
+### 22a. Rubutun Recharge — "Deposit Submitted — Processing"
+Yanzu idan user ya danna **Submit** a Recharge page, saƙon yana cewa: *"Deposit Submitted — Processing. Our AI verification system is reviewing your receipt automatically."* — kamar auto-processing ba manual ba. Admin har yanzu dole ne ya duba receipt a **Deposits tab** don Approved/Rejected; wannan canji ne na rubutu kawai don sa users su ji dadi.
+
+### 22b. Notifications Hub (Admin Panel → tab "Notifications")
+Sabon shafi na gaba ɗaya wanda ke nuna **duk ayyukan kowanne user**:
+
+| Abin Nuni | Bayani |
+|---|---|
+| **Per-user Box** | Kowanne user yana da box dinsa — suna, email/phone, role, status, Balance, Total Earned |
+| **Ayyuka a kowanne box** | Approve/Activate, Suspend, Promote to Admin, Credit (+$10/$50/$100/custom), Reset Password, Delete |
+| **Activity Items** | Kowanne ayyukan user a cikin box ɗinsa: register, deposit, withdrawal, vip_purchase — tare da date da time |
+| **Unread Badge** | Lambar alamar ja a kan tab "Notifications" tana nuna **total unread** |
+| **Auto-add** | Sabbin users suna shiga Hub din atomatik ba tare da admin ya yi komai ba |
+
+### 22c. Endpoints na Round 40
+| Endpoint | Bayani |
+|---|---|
+| `GET /api/admin/notification-hub` | Hub ɗin per-user activity (totalUnread, total, hub[]) |
+| `PUT /api/admin/users/:id` | Full edit na dukka fields (balance, role, is_banned, da sauransu) |
+| `POST /api/recharges` | Yana tura activity "deposit" + sabon rubutu na Processing |
+| `POST /api/withdrawals` | Yana tura activity "withdrawal" |
+| Register / VIP purchase | Suna tura activity "register" / "vip_purchase" |
+
+### 22d. Lura ga Deployment (Round 40)
+An deploy (16/08/2026). VIP videos da free videos sun rabu (tiered pools), 24h reset yana aiki, Import Ad-Network Tasks yana aiki.

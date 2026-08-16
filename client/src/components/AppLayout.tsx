@@ -20,6 +20,7 @@ import {
   Headset,
   Store,
   Crown,
+  ListChecks,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -30,6 +31,7 @@ const navItems = [
   { icon: Crown, label: "VIP Task", path: "/vip" },
   { icon: Users, label: "Team", path: "/referral" },
   { icon: UserCircle, label: "Personal Center", path: "/wallet" },
+  { icon: ListChecks, label: "Records", path: "/records" },
   { icon: Award, label: "Milestone", path: "/dashboard" },
   { icon: Headset, label: "Support Center", path: "/support" },
 ];
@@ -82,10 +84,25 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const fetchNotifs = useCallback(async () => {
     try {
-      const res = await fetch("/api/notifications");
+      const res = await fetch("/api/notifications", {
+        headers: {
+          Authorization: "Bearer " + (localStorage.getItem("token") || ""),
+        },
+      });
       if (res.ok) {
         const json = await res.json();
-        setNotifs(json.notifications || json || []);
+        const rows = json.notifications || json || [];
+        // Normalize snake_case DB rows to camelCase so readStatus/message keys resolve
+        const camel = rows.map((n: any) => ({
+          ...n,
+          id: n.id,
+          title: n.title,
+          message: n.message ?? n.body ?? "",
+          isRead: n.is_read ?? n.readStatus ?? n.isRead ?? false,
+          isBroadcast: n.is_broadcast ?? n.isBroadcast ?? false,
+          createdAt: n.created_at ?? n.createdAt ?? null,
+        }));
+        setNotifs(camel);
       }
     } catch {}
   }, []);
@@ -105,7 +122,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     } catch {}
   };
 
-  const unreadCount = notifs.filter(n => !n.is_read).length;
+  const unreadCount = notifs.filter(n => !(n.isRead ?? n.readStatus ?? false)).length;
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-sidebar border-r border-sidebar-border">
@@ -196,6 +213,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </Button>
           </div>
         )}
+
+        <button
+          onClick={() => navigate("/notifications")}
+          className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors"
+        >
+          <Bell className="w-4.5 h-4.5 flex-shrink-0" />
+          {!sidebarCollapsed && <span>Notifications</span>}
+          {unreadCount > 0 && (
+            <span className="min-w-[16px] h-4 px-1 flex items-center justify-center text-[9px] font-bold text-primary-foreground bg-primary rounded-full">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </button>
 
         <button
           onClick={() => navigate("/recharge")}
@@ -292,53 +322,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
               {/* Notification bell */}
               <div className="relative">
-                <button
-                  onClick={() => setNotifOpen(v => !v)}
-                  className="relative p-2 hover:bg-accent rounded-lg transition-colors"
-                >
-                  <Bell className="w-4.5 h-4.5" />
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center text-[9px] font-bold text-primary-foreground bg-primary rounded-full">
-                      {unreadCount > 9 ? "9+" : unreadCount}
-                    </span>
-                  )}
-                </button>
-                {notifOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
-                    <div className="absolute right-0 top-full mt-2 w-80 max-h-[70vh] overflow-y-auto bg-card border border-border rounded-xl shadow-lg z-50">
-                      <div className="sticky top-0 px-4 py-3 border-b border-border bg-card flex items-center justify-between">
-                        <p className="text-sm font-semibold">Notifications</p>
-                        <button className="text-xs text-primary hover:underline" onClick={fetchNotifs}>Refresh</button>
-                      </div>
-                      {notifs.length === 0 ? (
-                        <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                          <Bell className="w-8 h-8 mx-auto mb-2 text-primary/20" />
-                          No notifications yet
-                        </div>
-                      ) : (
-                        notifs.map((n: any) => (
-                          <button
-                            key={n.id}
-                            onClick={() => markRead(n.id)}
-                            className={`w-full text-left px-4 py-3 border-b border-border/50 last:border-0 hover:bg-accent/50 transition-colors ${
-                              !n.is_read ? "bg-primary/[0.04]" : ""
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 mb-0.5">
-                              {!n.is_read && <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />}
-                              <p className="text-xs font-semibold line-clamp-1">{n.title}</p>
-                            </div>
-                            <p className="text-xs text-muted-foreground line-clamp-2">{n.body}</p>
-                            <p className="text-[10px] text-muted-foreground/70 mt-1">
-                              {n.created_at ? new Date(n.created_at).toLocaleString() : ""}
-                            </p>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </>
+              <button
+                onClick={() => {
+                  navigate("/notifications");
+                  setNotifOpen(false);
+                }}
+                className="relative p-2 hover:bg-accent rounded-lg transition-colors"
+                aria-label="Open notifications"
+              >
+                <Bell className="w-4.5 h-4.5" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center text-[9px] font-bold text-primary-foreground bg-primary rounded-full">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
                 )}
+              </button>
               </div>
 
               {/* About */}

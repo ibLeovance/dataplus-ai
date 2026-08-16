@@ -7,7 +7,7 @@ import urllib.request
 
 WDIR = "/home/ubuntu/dataplus-ai"
 PROJECT = "ai-computer-xplus-ai-fresh"
-TOKEN = os.environ.get("CFTOKEN", "<CFTOKEN-REDACTED>")
+TOKEN = os.environ.get("CFTOKEN", "<CFUT-TOKEN-REDACTED>")
 ACCT = "0ec80d86459ac03a994318aeeb18b519"
 EMAIL = "Bitcoinxml2000@proton.me"
 API = f"https://api.cloudflare.com/client/v4/accounts/{ACCT}"

@@ -10,6 +10,8 @@ import Dashboard from "./pages/Dashboard";
 import Tasks from "./pages/Tasks";
 import TaskDetail from "./pages/TaskDetail";
 import Wallet from "./pages/Wallet";
+import Records from "./pages/Records";
+import Notifications from "./pages/Notifications";
 import Withdraw from "./pages/Withdraw";
 import Recharge from "./pages/Recharge";
 import VipTask from "./pages/VipTask";
@@ -51,6 +53,8 @@ function Router() {
       <Route path={"/tasks/:id"} component={TaskDetail} />
       <Route path={"/vip"} component={VipTask} />
       <Route path={"/wallet"} component={Wallet} />
+      <Route path={"/records"} component={Records} />
+      <Route path={"/notifications"} component={Notifications} />
       <Route path={"/withdraw"} component={Withdraw} />
       <Route path={"/recharge"} component={Recharge} />
       <Route path={"/referral"} component={Referral} />

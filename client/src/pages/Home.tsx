@@ -269,55 +269,59 @@ export default function Home() {
         {/* Content */}
         <main className="flex-1 p-4 lg:p-6">
           {/* Hero */}
-          <section className="mb-8 hero-glow">
-            <div className="flex items-start gap-4 mb-6">
-              <div>
-                <Badge className="mb-3 px-3 py-1 text-xs font-medium bg-primary/10 text-primary border-primary/20">
-                  <Star className="w-3 h-3 mr-1" />
-                  Simple tasks, real rewards
-                </Badge>
-                <h1 className="text-3xl lg:text-4xl font-bold mb-3">
-                  Earn Crypto by <span className="text-gradient">Completing Tasks</span>
-                </h1>
-                <p className="text-muted-foreground text-base max-w-xl">
-                  Complete simple online tasks and get paid directly to your crypto wallet in BTC, USDT, or TRX.
-                </p>
+          <section className="mb-8">
+            <div className="relative overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/10 via-card to-primary/5 p-6 lg:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="pointer-events-none absolute -top-16 -right-16 w-64 h-64 rounded-full bg-primary/8 blur-3xl" aria-hidden="true" />
+              <div className="pointer-events-none absolute -bottom-20 -left-16 w-72 h-72 rounded-full bg-primary/6 blur-3xl" aria-hidden="true" />
+              <div className="flex items-start gap-4 mb-6 relative">
+                <div>
+                  <Badge className="mb-3 px-3 py-1 text-xs font-medium bg-primary/10 text-primary border-primary/20">
+                    <Star className="w-3 h-3 mr-1" />
+                    Simple tasks, real rewards
+                  </Badge>
+                  <h1 className="text-3xl lg:text-4xl font-bold mb-3">
+                    Earn Crypto by <span className="text-gradient">Completing Tasks</span>
+                  </h1>
+                  <p className="text-muted-foreground text-base max-w-xl">
+                    Complete simple online tasks and get paid directly to your crypto wallet in BTC, USDT, or TRX.
+                  </p>
+                </div>
               </div>
-            </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 mb-8">
-              <Button
-                size="lg"
-                onClick={() => window.location.href = "/login"}
-                className="h-11 px-6 btn-luxury"
-              >
-                Start Earning Now
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-              <a href="#tasks">
-                <Button size="lg" variant="outline" className="h-11 px-6 border-primary/30 text-primary hover:bg-primary/5">
-                  Learn More
+              <div className="flex flex-col sm:flex-row gap-3 mb-8 relative">
+                <Button
+                  size="lg"
+                  onClick={() => window.location.href = "/login"}
+                  className="h-11 px-6 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold btn-luxury"
+                >
+                  Start Earning Now
+                  <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
-              </a>
-            </div>
+                <a href="#tasks">
+                  <Button size="lg" variant="outline" className="h-11 px-6 border-primary/30 text-primary hover:bg-primary/5">
+                    Learn More
+                  </Button>
+                </a>
+              </div>
 
             {/* Quick stats */}
             <div className="grid grid-cols-3 gap-4 max-w-lg">
-              <div className="text-center p-4 stat-luxury">
+              <div className="text-center p-3 rounded-lg bg-card border border-border">
                 <Wallet className="w-6 h-6 text-primary mx-auto mb-1" />
                 <div className="text-xs font-semibold">BTC, USDT & TRX</div>
                 <div className="text-[10px] text-muted-foreground">Payout options</div>
               </div>
-              <div className="text-center p-4 stat-luxury">
+              <div className="text-center p-3 rounded-lg bg-card border border-border">
                 <ShieldCheck className="w-6 h-6 text-primary mx-auto mb-1" />
                 <div className="text-xs font-semibold">Verified Tasks</div>
                 <div className="text-[10px] text-muted-foreground">Admin-reviewed</div>
               </div>
-              <div className="text-center p-4 stat-luxury">
+              <div className="text-center p-3 rounded-lg bg-card border border-border">
                 <Users className="w-6 h-6 text-primary mx-auto mb-1" />
                 <div className="text-xs font-semibold">Referral Bonus</div>
                 <div className="text-[10px] text-muted-foreground">10% per referral</div>
               </div>
+            </div>
             </div>
           </section>
 
@@ -353,8 +357,8 @@ export default function Home() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {taskTypes.map((task) => (
-                <Card key={task.title} className="card-luxury border-transparent">
-                  <CardContent className="p-4 relative">
+                <Card key={task.title} className="card-luxury hover:shadow-lg transition-all duration-200 border-transparent">
+                  <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-3">
                       <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
                         <task.icon className="w-5 h-5 text-primary" />
@@ -369,43 +373,6 @@ export default function Home() {
                 </Card>
               ))}
             </div>
-          </section>
-
-          {/* Hot news (echoeffect-style column rows) */}
-          <section className="mb-8">
-            <h2 className="text-xl font-bold mb-4">Hot News</h2>
-            <Card className="border-border shadow-sm">
-              <CardContent className="p-0">
-                {/* Column headers */}
-                <div className="grid grid-cols-[48px_1fr_90px_90px_90px_90px] items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/40 text-[11px] font-semibold text-muted-foreground">
-                  <span className="text-center">#</span>
-                  <span>Article</span>
-                  <span className="text-center">Views</span>
-                  <span className="text-center">Likes</span>
-                  <span className="text-center">Favorites</span>
-                  <span className="text-center">Reward</span>
-                </div>
-                {/* Data rows */}
-                <div>
-                  {[
-                    { n: 1, title: "Watch a short video and earn TRX", views: "12,480", likes: "1,204", favs: "856", reward: "$0.05" },
-                    { n: 2, title: "Share your referral link on Telegram", views: "9,312", likes: "892", favs: "640", reward: "$0.10" },
-                    { n: 3, title: "Complete a quick partner survey", views: "7,845", likes: "741", favs: "523", reward: "$0.25" },
-                    { n: 4, title: "Follow the platform news channel", views: "5,621", likes: "632", favs: "412", reward: "$0.02" },
-                    { n: 5, title: "Download a partner app and keep it 24h", views: "4,209", likes: "503", favs: "358", reward: "$0.50" },
-                  ].map((row) => (
-                    <div key={row.n} className="grid grid-cols-[48px_1fr_90px_90px_90px_90px] items-center gap-2 px-4 py-3 border-b border-border/60 last:border-b-0 hover:bg-muted/30 transition-colors">
-                      <span className="text-center text-xs font-semibold text-primary">{row.n}</span>
-                      <span className="text-sm font-medium truncate">{row.title}</span>
-                      <span className="text-center text-xs text-muted-foreground">{row.views}</span>
-                      <span className="text-center text-xs text-muted-foreground">{row.likes}</span>
-                      <span className="text-center text-xs text-muted-foreground">{row.favs}</span>
-                      <span className="text-center text-xs font-semibold text-primary">{row.reward}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
           </section>
 
           {/* How it works / News */}

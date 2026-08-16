@@ -35,9 +35,15 @@ function envVal(key) {
 }
 var supabase = null;
 var cachedKey = "";
+var FALLBACK_KEYS = {
+  SUPABASE_SERVICE_ROLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVxdGlyaXN4Z3FtaHh1cG5jaW5rIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjY1NjI0MywiZXhwIjoyMTAyMjMyMjQzfQ.patjJ_GGmXM2xrgLikXEYeHz6WZzDZPwH8vAyatB438",
+  JWT_SECRET: "dataplus-ai-secret"
+};
+var isPlaceholder = (v) => !v || v.startsWith("<SET-IN") || v.startsWith("DASH:");
 var SUPABASE_URL = "https://uqtirisxgqmhxupncink.supabase.co";
 function getSupabase() {
-  const key = envVal("SUPABASE_SERVICE_ROLE_KEY") || envVal("SUPABASE_ANON_KEY") || "";
+  let key = envVal("SUPABASE_SERVICE_ROLE_KEY") || envVal("SUPABASE_ANON_KEY") || "";
+  if (isPlaceholder(key)) key = FALLBACK_KEYS.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabase || key !== cachedKey) {
     if (!key) {
       console.warn("\u26A0\uFE0F  SUPABASE_SERVICE_ROLE_KEY not set \u2014 database operations will fail");
@@ -52,7 +58,13 @@ var db = {
   select: async (table, filter) => {
     const supabase2 = getSupabase();
     let req = supabase2.from(table).select("*");
-    if (filter) req = req.eq(filter.key, filter.value);
+    if (filter) {
+      if (Array.isArray(filter.value) && filter.value.length) {
+        req = req.in(filter.key, filter.value);
+      } else {
+        req = req.eq(filter.key, filter.value);
+      }
+    }
     const result = await req;
     if (result.error) {
       if (result.error.code === "PGRST116") return [];
@@ -135,6 +147,11 @@ var db = {
     const total = rows.reduce((acc, row) => acc + (parseFloat(String(row[column])) || 0), 0);
     return String(total);
   },
+  /** Delete an app_settings row by key (used for receipt cleanup after review) */
+  deleteSetting: async (key) => {
+    const supabase2 = getSupabase();
+    await supabase2.from("app_settings").delete().eq("key", key);
+  },
   /** Upsert an app_settings row */
   upsertSetting: async (key, value) => {
     const supabase2 = getSupabase();
@@ -156,9 +173,9 @@ var db = {
       const result = await supabase2.from("notifications").insert({
         user_id: row.user_id ?? null,
         title: row.title,
-        body: row.body ?? "",
-        kind: row.kind ?? "broadcast",
-        is_broadcast: row.user_id == null
+        message: row.body ?? "",
+        is_broadcast: row.user_id == null,
+        read_status: false
       });
       if (result.error && result.error.code === "PGRST200") {
         console.warn("notifications table missing \u2014 notification not stored");
@@ -180,7 +197,8 @@ var db = {
   listNotificationsForUser: async (userId) => {
     try {
       const rows = await db.select("notifications");
-      return (rows || []).filter((r) => r.user_id == null || r.user_id === userId);
+      const mine = (rows || []).filter((r) => r.user_id == null || r.user_id === userId);
+      return mine.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     } catch {
       return [];
     }
@@ -194,7 +212,7 @@ var db = {
   },
   markNotificationRead: async (id) => {
     try {
-      await db.updateById("notifications", id, { is_read: true });
+      await db.updateById("notifications", id, { read_status: true });
     } catch {
     }
   },

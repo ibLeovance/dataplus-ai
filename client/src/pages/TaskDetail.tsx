@@ -166,7 +166,7 @@ export default function TaskDetail() {
               <Badge variant="outline">{typeLabels[task.category] || task.category}</Badge>
               <span className="text-sm text-muted-foreground flex items-center gap-1">
                 <Clock className="w-4 h-4" />
-                Min. {task.timeLimit} seconds
+                Min. 30 seconds
               </span>
             </div>
 
@@ -193,7 +193,7 @@ export default function TaskDetail() {
                 <p className={`text-xs font-semibold mt-1 ${timeElapsed >= 30 ? "text-emerald-600" : "text-primary"}`}>
                   {timeElapsed >= 30
                     ? `✓ Video watched ${timeElapsed}s — qualifies for payment (${task.currency} ${Number(task.reward).toFixed(4)})`
-                    : `⚠ Video must be watched at least 30s before payment (${30 - timeElapsed}s remaining)`}
+                    : `⚠ Free task requires a full 30-second watch (${30 - timeElapsed}s remaining)`}
                 </p>
               )}
             </div>

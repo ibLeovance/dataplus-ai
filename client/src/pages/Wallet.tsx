@@ -22,6 +22,11 @@ import {
   DollarSign,
   CheckCircle2,
   ArrowLeft,
+  Lock,
+  ShieldCheck,
+  Clock,
+  XCircle,
+  ListChecks,
 } from "lucide-react";
 
 const walletIcons: Record<string, any> = {
@@ -37,12 +42,36 @@ export default function Wallet() {
   const [usdtAddress, setUsdtAddress] = useState(user?.usdtAddress || "");
   const [trxAddress, setTrxAddress] = useState(user?.trxAddress || "");
   const [saving, setSaving] = useState(false);
+  const [currentPin, setCurrentPin] = useState("");
+  const [pinFetched, setPinFetched] = useState(false);
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [pinSaving, setPinSaving] = useState(false);
+  const [pinMode, setPinMode] = useState<"create" | "change">("create");
+  const [withdrawals, setWithdrawals] = useState<any[]>([]);
 
   useEffect(() => {
     if (!isLoading && !user) {
       navigate("/login");
     }
   }, [user, isLoading, navigate]);
+
+  useEffect(() => {
+    if (user) {
+      fetch("/api/auth/my-pin", { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => (r.ok ? r.json() : Promise.resolve({ pin: "" })))
+        .then(d => {
+          setCurrentPin(d.pin || "");
+          setPinMode(d.pin ? "change" : "create");
+          setPinFetched(true);
+        })
+        .catch(() => setPinFetched(true));
+      fetch("/api/withdrawals/my", { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => res.json())
+        .then(wd => setWithdrawals((wd.withdrawals || []).slice(0, 10)))
+        .catch(() => {});
+    }
+  }, [user, token]);
 
   const handleSave = async () => {
     if (!btcAddress.trim() && !usdtAddress.trim() && !trxAddress.trim()) {
@@ -139,6 +168,157 @@ export default function Wallet() {
                 <CheckCircle2 className="w-5 h-5 mr-2" />
               )}
               Save Wallet Addresses
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Withdraw PIN */}
+        <Card className="border-border shadow-sm mt-6">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Lock className="w-4.5 h-4.5 text-primary" />
+              {pinMode === "create" ? "Create Withdraw PIN" : "Change Withdraw PIN"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Your Withdraw PIN (4-6 digits) is required for every withdrawal. Keep it secret and never share it.
+            </p>
+            {pinMode === "change" && (
+              <div className="space-y-2">
+                <Label>Current PIN</Label>
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="Enter current PIN"
+                  value={currentPin}
+                  onChange={(e) => setCurrentPin(e.target.value.replace(/[^0-9]/g, ""))}
+                  className="bg-secondary/50 border-border font-mono tracking-widest"
+                />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>New PIN</Label>
+              <Input
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="4 to 6 digits"
+                value={newPin}
+                onChange={(e) => setNewPin(e.target.value.replace(/[^0-9]/g, ""))}
+                className="bg-secondary/50 border-border font-mono tracking-widest"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Confirm New PIN</Label>
+              <Input
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="Repeat new PIN"
+                value={confirmPin}
+                onChange={(e) => setConfirmPin(e.target.value.replace(/[^0-9]/g, ""))}
+                className="bg-secondary/50 border-border font-mono tracking-widest"
+              />
+            </div>
+            <Button
+              onClick={async () => {
+                if (!pinFetched) { toast.error("Please wait, loading..."); return; }
+                if (pinMode === "change" && currentPin !== (newPin || "").padEnd(0) && currentPin === "") {
+                  // fallback handled below
+                }
+                if (newPin.length < 4 || newPin.length > 6) {
+                  toast.error("PIN must be 4 to 6 digits");
+                  return;
+                }
+                if (newPin !== confirmPin) {
+                  toast.error("PINs do not match");
+                  return;
+                }
+                if (pinMode === "change" && newPin === currentPin) {
+                  toast.error("New PIN must differ from current PIN");
+                  return;
+                }
+                setPinSaving(true);
+                try {
+                  const res = await fetch("/api/auth/my-pin", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ pin: newPin }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.error || "Failed");
+                  toast.success(pinMode === "create" ? "Withdraw PIN created!" : "Withdraw PIN changed!");
+                  setCurrentPin(newPin);
+                  setNewPin("");
+                  setConfirmPin("");
+                  setPinMode("change");
+                } catch (err: any) {
+                  toast.error(err.message);
+                } finally {
+                  setPinSaving(false);
+                }
+              }}
+              disabled={pinSaving || !newPin || !confirmPin || !pinFetched}
+              className="w-full h-11 bg-primary text-primary-foreground font-semibold hover:bg-primary/90"
+            >
+              {pinSaving ? (
+                <div className="animate-spin w-5 h-5 border-2 border-current border-t-transparent rounded-full mr-2" />
+              ) : (
+                <ShieldCheck className="w-5 h-5 mr-2" />
+              )}
+              {pinMode === "create" ? "Create PIN" : "Change PIN"}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Withdrawal Records */}
+        <Card className="border-border shadow-sm mt-6">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ListChecks className="w-4.5 h-4.5 text-primary" />
+              Withdrawal Records
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {withdrawals.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">No withdrawal records yet.</p>
+            ) : (
+              <div className="divide-y divide-border">
+                {withdrawals.map((w: any) => {
+                  const status = (w.status || "pending").toLowerCase();
+                  const statusColor =
+                    status === "approved" || status === "paid"
+                      ? "text-success"
+                      : status === "rejected"
+                      ? "text-destructive"
+                      : "text-warning";
+                  const StatusIcon =
+                    status === "approved" || status === "paid" ? CheckCircle2 : status === "rejected" ? XCircle : Clock;
+                  return (
+                    <div key={w.id} className="flex items-center justify-between gap-3 py-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <StatusIcon className={`w-4 h-4 ${statusColor} flex-shrink-0`} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">{w.currency} — ${Number(w.amount).toFixed(4)}</p>
+                          <p className="text-[11px] text-muted-foreground font-mono truncate max-w-[180px]">{w.walletAddress}</p>
+                          <p className="text-[11px] text-muted-foreground">{new Date(w.createdAt).toLocaleString()}</p>
+                        </div>
+                      </div>
+                      <span className={`text-xs font-semibold capitalize ${statusColor} flex-shrink-0`}>{w.status}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full mt-4 border-border text-foreground"
+              onClick={() => navigate("/withdraw")}
+            >
+              View all withdrawals
             </Button>
           </CardContent>
         </Card>

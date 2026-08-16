@@ -12,7 +12,9 @@ import {
   ArrowRight,
   Coins,
   Copy,
+  Crown,
 } from "lucide-react";
+import { RotatingChart } from "@/components/RotatingChart";
 import { toast } from "sonner";
 import React from "react";
 
@@ -21,7 +23,11 @@ interface OverviewData {
   pendingBalance: string;
   referralBonus: string;
   completedTasks: number;
+  completedFreeTasks?: number;
+  completedVipTasks?: number;
   pendingTasks: number;
+  pendingFreeTasks?: number;
+  pendingVipTasks?: number;
   referralCode: string;
   availableBalance: string;
 }
@@ -145,12 +151,26 @@ export default function Dashboard() {
           <Card className="border-border shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center gap-3 mb-2">
+                <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <CheckCircle2 className="w-4.5 h-4.5 text-primary" />
+                </div>
+                <span className="text-sm text-muted-foreground">VIP Tasks Approved</span>
+              </div>
+              <p className="text-xl font-bold">{overview?.completedVipTasks ?? 0}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">Pays directly to your wallet on approval</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border shadow-sm">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3 mb-2">
                 <div className="w-9 h-9 rounded-lg bg-accent flex items-center justify-center">
                   <CheckCircle2 className="w-4.5 h-4.5 text-foreground" />
                 </div>
-                <span className="text-sm text-muted-foreground">Tasks Completed</span>
+                <span className="text-sm text-muted-foreground">Free Tasks Approved</span>
               </div>
-              <p className="text-xl font-bold">{overview?.completedTasks || 0}</p>
+              <p className="text-xl font-bold">{overview?.completedFreeTasks ?? 0}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">Credited to the platform account</p>
             </CardContent>
           </Card>
 
@@ -163,6 +183,9 @@ export default function Dashboard() {
                 <span className="text-sm text-muted-foreground">Pending Review</span>
               </div>
               <p className="text-xl font-bold text-warning">{overview?.pendingTasks || 0}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                VIP: <b className="text-foreground">{overview?.pendingVipTasks ?? 0}</b> • Free: <b className="text-foreground">{overview?.pendingFreeTasks ?? 0}</b>
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -220,6 +243,17 @@ export default function Dashboard() {
           </Button>
         </div>
 
+        {/* Milestone — Rotating earnings chart */}
+        <Card className="border-transparent shadow-sm mb-6">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Earnings Overview</CardTitle>
+            <p className="text-xs text-muted-foreground">Live rotating market-style chart of your platform activity</p>
+          </CardHeader>
+          <CardContent>
+            <RotatingChart baseValue={Number(overview?.totalEarned || "0")} completed={overview?.completedTasks || 0} />
+          </CardContent>
+        </Card>
+
         {/* Recent Activity */}
         <Card className="border-border shadow-sm">
           <CardHeader className="pb-3">
@@ -244,6 +278,15 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {(c as any).funding === "user" ? (
+                        <Badge className="bg-primary/10 text-primary border-primary/30 font-semibold">
+                          <Crown className="w-3 h-3 mr-1" /> VIP
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-muted-foreground border-border">
+                          <Coins className="w-3 h-3 mr-1" /> Free
+                        </Badge>
+                      )}
                       <Badge
                         variant="outline"
                         className={
